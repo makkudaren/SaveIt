@@ -25,6 +25,7 @@
   --green4: #4d8335;
 
   --blue3: #00a2ff;
+  --red3: #ff0000;
 
   --gradient-green1: linear-gradient(to right, #FFFFFF, #F3FAF3);
   --gradient-green2: linear-gradient(to right, #F3FAF3, #B8F4B2);
@@ -32,9 +33,10 @@
   --gradient-green4: linear-gradient(to right, #6CB14C, #4d8335);
 
   --neutral0: #FFFFFF;
+  --neutral1a: rgb(241, 241, 241);
   --neutral1: #e6e6e6;
   --neutral2: #969696;
-  --neutral3: #4b4b4b;
+  --neutral3: #6d6d6d;
   --neutral4: #2c2c2c;
   --neutral5: #000000;
 }
@@ -102,7 +104,14 @@ label{
 }
 
 input{
-  background-color: rgb(241, 241, 241);
+  background-color: var(--neutral1a);
+  border-radius: 1rem;
+  height: 3.5rem;
+  padding-left: 3rem;
+}
+
+textarea{
+  background-color: var(--neutral1a);
   border-radius: 1rem;
   height: 3.5rem;
   padding-left: 3rem;
@@ -186,6 +195,15 @@ input[type="checkbox"]:focus-visible {
   80% { transform: translateX(6px); }
 }
 
+.close-icon {
+  @apply 
+         hover:no-underline
+         hover:scale-110
+         hover:cursor-pointer
+         text-4xl text-[var(--neutral3)] 
+         bg-transparent;
+         transition: 300ms;
+}
 
 /*
 @media (prefers-color-scheme: light) {

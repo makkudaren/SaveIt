@@ -15,34 +15,9 @@ function App() {
 
   return(
     <>
-
       <LoginPage/>
     </>
   )
-
-
-  /* 
-  const [page, setPage] = useState("register"); // default page
-
-  return (
-    <div>
-      {/* Navigation }
-      <nav className="flex gap-4 mb-4">
-        <button onClick={() => setPage("home")}>Home</button>
-        <button onClick={() => setPage("about")}>About</button>
-        <button onClick={() => setPage("register")}>Register</button>
-        <button onClick={() => setPage("login")}>login</button>
-      </nav>
-
-      {/* Page content }
-      <main>
-        {page === "home" && <Home />}
-        {page === "about" && <About />}
-        {page === "register" && <RegisterForm />}
-        {page === "login" && <LoginForm />}
-      </main>
-    </div>
-  );*/
 }
 
 export default App;
