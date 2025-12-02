@@ -205,6 +205,19 @@ input[type="checkbox"]:focus-visible {
          transition: 300ms;
 }
 
+.panel{
+  border-width: 0.15rem;
+  border-color: rgba(156,163,175,0) transparent;
+  transition: 300ms;
+}
+.panel:hover{
+  border-color: var(--green2);
+}
+
+.trans-smooth{
+  transition: 500ms;
+}
+
 /*
 @media (prefers-color-scheme: light) {
   :root {

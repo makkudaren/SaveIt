@@ -1,68 +1,78 @@
 // CreateTrackerForm.jsx
 // -----------------------------------------------------------------------------
-// Modal form used for creating a new financial tracker inside the SaveIt system.
+// Modal component responsible for creating a new savings tracker.
 //
-// Core Responsibilities:
-// - Render form inputs for tracker information, goal settings,
-//   streak automation, and contributor management.
-// - Dynamically calculate required minimum daily contribution
-//   or required time based on user input.
-// - Automatically adjust dependent fields based on toggle state.
-// - Provide a clean and maintainable UI for future expansions.
-//
-// NOTE:
-// The function responsible for submitting tracker data to Supabase database
-//       >>> is still under development and will be implemented soon. <<<
-// This file currently focuses on front-end logic and form behavior.
+// High-level Responsibilities:
+// - Display all configurable tracker options (base info, streaks, goals,
+//   and contributors).
+// - Enable or disable sections based on user toggles.
+// - Auto-compute goal-related values when goal inputs change.
+// - Validate all inputs before allowing submission.
+// - Submit the finalized tracker object to the backend service.
+// - Reset all form state on close or after successful submission.
 // -----------------------------------------------------------------------------
 
 import React, { useState, useEffect } from "react";
+import { createTracker } from "../services/DatabaseControl";
 import ToggleSwitch from "./ToggleSwitch";
 
-function CreateTrackerForm({ show, onClose }) {
+// Updated: added onSuccess callback support for parent refresh
+function CreateTrackerForm({ show, onClose, onSuccess }) {
+
     // -------------------------------------------------------------------------
-    // TOGGLE STATES
-    // Controls which sections of the form are enabled.
+    // FEATURE TOGGLE STATES
+    // Controls whether streaks, goals, or contributors sections are active.
     // -------------------------------------------------------------------------
     const [streakEnabled, setStreakEnabled] = useState(false);
     const [goalEnabled, setGoalEnabled] = useState(false);
     const [contributionEnabled, setContributionEnabled] = useState(false);
 
     // -------------------------------------------------------------------------
-    // GOAL CALCULATION STATES
-    // goalAmount      → User's target amount
-    // minAmount       → Minimum daily contribution
-    // goalDate        → Target completion date
-    // result          → Computed text result
-    // isError         → Controls color formatting of result display
+    // BASE TRACKER FIELDS
+    // Raw user input that describes the tracker itself.
+    // -------------------------------------------------------------------------
+    const [trackerName, setTrackerName] = useState("");
+    const [description, setDescription] = useState("");
+       const [bankName, setBankName] = useState("");
+    const [interestRate, setInterestRate] = useState("");
+    const [streakMinAmount, setStreakMinAmount] = useState("");
+
+    // -------------------------------------------------------------------------
+    // GOAL CALCULATION FIELDS
+    // Stores goal configuration and computed output text.
+    // result = human-readable feedback used to guide the user.
+    // isError = flags invalid combinations so submission can be blocked.
     // -------------------------------------------------------------------------
     const [goalAmount, setGoalAmount] = useState("");
-       const [minAmount, setMinAmount] = useState("");
+    const [minAmount, setMinAmount] = useState("");
     const [goalDate, setGoalDate] = useState("");
     const [result, setResult] = useState("");
     const [isError, setIsError] = useState(false);
 
     // -------------------------------------------------------------------------
-    // CONTRIBUTOR MANAGEMENT
-    // A list of usernames that will collaborate on this tracker.
-    // Future expansion can include autocomplete or existing user lookup.
+    // CONTRIBUTOR LIST
+    // List of usernames. Always holds at least one empty string to render input.
     // -------------------------------------------------------------------------
     const [contributors, setContributors] = useState([""]);
 
     // -------------------------------------------------------------------------
-    // useEffect: Automatic Goal Calculator Logic
+    // SUBMISSION STATUS & ERROR MESSAGE
+    // Used to disable UI during submission and display validation/server errors.
+    // -------------------------------------------------------------------------
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState("");
+
+    // -------------------------------------------------------------------------
+    // EFFECT: Automatic goal calculation
     //
-    // Reactively calculates:
-    // - Minimum daily savings required (if goal date provided)
-    // - Number of days needed to finish a goal (if minimum amount provided)
+    // Recalculates the summary text whenever any goal-related input changes.
+    // Two calculation modes:
+    // - User gives min daily amount → compute days needed.
+    // - User gives goal date → compute required daily amount.
     //
-    // Triggers whenever the user interacts with:
-    //   goalAmount, minAmount, goalDate, or the goal-enabled toggle.
-    //
-    // Includes full validation of user inputs.
+    // If goal is disabled or inputs are invalid, the result resets.
     // -------------------------------------------------------------------------
     useEffect(() => {
-        // If goal feature is disabled → reset calculated values
         if (!goalEnabled) {
             setResult("");
             setIsError(false);
@@ -71,18 +81,16 @@ function CreateTrackerForm({ show, onClose }) {
 
         const goal = parseFloat(goalAmount);
 
-        // Validate goal amount
         if (!goal || goal <= 0) {
             setResult("");
             setIsError(false);
             return;
         }
 
-        // --- CALCULATION USING MINIMUM DAILY AMOUNT ---
+        // Mode 1: Daily minimum → compute days required
         if (minAmount) {
             const min = parseFloat(minAmount);
 
-            // Validate minimum amount
             if (min <= 0) {
                 setResult("Minimum amount must be greater than zero.");
                 setIsError(true);
@@ -95,20 +103,18 @@ function CreateTrackerForm({ show, onClose }) {
             return;
         }
 
-        // --- CALCULATION USING DEADLINE DATE ---
+        // Mode 2: Goal date → compute required daily minimum
         if (goalDate) {
             const today = new Date();
             const userDate = new Date(goalDate);
             const diffTime = userDate - today;
 
-            // Validate date
             if (diffTime <= 0) {
                 setResult("Goal date must be in the future.");
                 setIsError(true);
                 return;
             }
 
-            // Compute time difference
             const daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
             const minPerDay = (goal / daysLeft).toFixed(2);
 
@@ -117,23 +123,21 @@ function CreateTrackerForm({ show, onClose }) {
             return;
         }
 
-        // No result if no valid inputs
+        // No computation possible yet
         setResult("");
         setIsError(false);
     }, [goalAmount, minAmount, goalDate, goalEnabled]);
 
     // -------------------------------------------------------------------------
-    // Contributor Management Functions
-    // addContributor()    → Adds a new empty username field
-    // removeContributor() → Removes a username field unless only one remains
-    // updateContributor() → Updates the username at a specific index
+    // CONTRIBUTOR MANIPULATION HELPERS
+    // Adding/removing/updating entries in the contributors list.
     // -------------------------------------------------------------------------
-
     const addContributor = () => {
         setContributors([...contributors, ""]);
     };
 
     const removeContributor = (index) => {
+        // Ensure at least one input remains to avoid an empty UI state.
         if (contributors.length > 1) {
             setContributors(contributors.filter((_, i) => i !== index));
         }
@@ -145,46 +149,194 @@ function CreateTrackerForm({ show, onClose }) {
         setContributors(newContributors);
     };
 
-    // Do not render if modal is closed
-    if (!show) return null;
+    // -------------------------------------------------------------------------
+    // FORM RESET
+    // Clears all fields back to initial defaults. Called when closing the modal
+    // or after a successful submission.
+    // -------------------------------------------------------------------------
+    const resetForm = () => {
+        setTrackerName("");
+        setDescription("");
+        setBankName("");
+        setInterestRate("");
+        setStreakEnabled(false);
+        setStreakMinAmount("");
+        setGoalEnabled(false);
+        setGoalAmount("");
+        setMinAmount("");
+        setGoalDate("");
+        setContributionEnabled(false);
+        setContributors([""]);
+        setResult("");
+        setIsError(false);
+        setSubmitError("");
+    };
 
+    // -------------------------------------------------------------------------
+    // FORM VALIDATION
+    // Performs synchronous validation before sending data to backend.
+    // - Ensures required fields are filled.
+    // - Ensures values make sense given enabled features.
+    // - Blocks submission when goal calculation reports errors.
+    // -------------------------------------------------------------------------
+    const validateForm = () => {
+        if (!trackerName.trim()) {
+            setSubmitError("Tracker name is required.");
+            return false;
+        }
+
+        if (streakEnabled && (!streakMinAmount || parseFloat(streakMinAmount) <= 0)) {
+            setSubmitError("Please enter a valid minimum streak amount.");
+            return false;
+        }
+
+        if (goalEnabled) {
+            if (!goalAmount || parseFloat(goalAmount) <= 0) {
+                setSubmitError("Please enter a valid goal amount.");
+                return false;
+            }
+
+            // At least one goal input must be chosen
+            if (!minAmount && !goalDate) {
+                setSubmitError("Please enter either a minimum daily amount or a goal date.");
+                return false;
+            }
+
+            if (isError) {
+                setSubmitError("Please fix the goal calculation errors.");
+                return false;
+            }
+        }
+
+        if (contributionEnabled) {
+            const validContributors = contributors.filter(c => c.trim() !== "");
+            if (validContributors.length === 0) {
+                setSubmitError("Please add at least one contributor or disable contributors.");
+                return false;
+            }
+        }
+
+        setSubmitError("");
+        return true;
+    };
+
+    // -------------------------------------------------------------------------
+    // SUBMISSION HANDLER
+    // Prepares the payload, sends it to the backend, and handles response.
+    // On success: resets form, closes modal, and notifies parent via onSuccess.
+    // -------------------------------------------------------------------------
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+
+        if (!validateForm()) {
+            return;
+        }
+
+        setIsSubmitting(true);
+        setSubmitError("");
+
+        try {
+            const trackerData = {
+                trackerName: trackerName.trim(),
+                description: description.trim() || null,
+                bankName: bankName.trim() || null,
+                interestRate: interestRate ? parseFloat(interestRate) : null,
+                streakEnabled,
+                streakMinAmount: streakEnabled && streakMinAmount ? parseFloat(streakMinAmount) : null,
+                goalEnabled,
+                goalAmount: goalEnabled && goalAmount ? parseFloat(goalAmount) : null,
+                minDailyAmount: goalEnabled && minAmount ? parseFloat(minAmount) : null,
+                goalDate: goalEnabled && goalDate ? goalDate : null,
+                contributors: contributionEnabled ? contributors.filter(c => c.trim() !== "") : []
+            };
+
+            const response = await createTracker(trackerData);
+
+            if (response.success) {
+                resetForm();
+                onClose();
+
+                // Notify parent so it can refresh tracker list
+                if (onSuccess) {
+                    onSuccess({ action: "create", trackerId: response.trackerId });
+                }
+            } else {
+                setSubmitError(response.error || "Failed to create tracker. Please try again.");
+            }
+        } catch (error) {
+            console.error("Error creating tracker:", error);
+            setSubmitError("An unexpected error occurred. Please try again.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // -------------------------------------------------------------------------
+    // CLOSE HANDLER
+    // Prevents closing while submission is in progress; otherwise resets form.
+    // -------------------------------------------------------------------------
+    const handleClose = () => {
+        if (!isSubmitting) {
+            resetForm();
+            onClose();
+        }
+    };
+
+    // Do not render anything when modal is hidden.
+    if (!show) return null;
+    
     return (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-50">
             <div className="relative bg-white p-8 w-[39em] h-[48em] rounded-3xl shadow-lg flex flex-col">
 
-                {/* -------------------------------------------------------------
-                    CLOSE BUTTON (Top Right)
-                    ------------------------------------------------------------- */}
-                <a onClick={onClose} className="close-icon absolute top-2 right-5">×</a>
+                {/* CLOSE BUTTON */}
+                <a 
+                    onClick={handleClose} 
+                    className="close-icon absolute top-2 right-5"
+                    style={{ cursor: isSubmitting ? "not-allowed" : "pointer", opacity: isSubmitting ? 0.5 : 1 }}
+                >
+                    ×
+                </a>
 
                 <h3 className="text-xl font-semibold text-center mb-4">Create Tracker</h3>
 
-                {/* -------------------------------------------------------------
-                    SCROLLABLE FORM SECTION
-                    All content inside is scrollable except title and buttons.
-                    ------------------------------------------------------------- */}
-                <div className="flex-1 overflow-y-auto p-2">
-                    <form id="create-tracker-form">
+                {/* ERROR MESSAGE DISPLAY */}
+                {submitError && (
+                    <div className="mb-3 p-3 bg-red-100 border border-red-400 text-red-700 rounded-xl text-sm">
+                        {submitError}
+                    </div>
+                )}
 
-                        {/* MAIN FORM LAYOUT: LEFT + RIGHT SECTIONS */}
+                {/* SCROLLABLE FORM SECTION */}
+                <div className="flex-1 overflow-y-auto p-2">
+                    <form id="create-tracker-form" onSubmit={handleSubmit}>
+
                         <div className="flex flex-row gap-5">
 
-                            {/* -------------------------------------------------
-                               LEFT SIDE: Tracker Info + Streak Settings
-                               ------------------------------------------------- */}
+                            {/* LEFT SIDE */}
                             <div className="//Left flex flex-col">
                                 <h5>Tracker Information</h5>
 
                                 <div className="flex flex-row gap-5 mb-2">
                                     <div className="flex flex-col gap-2">
                                         <label>Tracker Name*</label>
-                                        <input className="w-65 !h-10 !p-4 !rounded-xl" type="text" required />
+                                        <input 
+                                            className="w-65 !h-10 !p-4 !rounded-xl" 
+                                            type="text" 
+                                            required
+                                            value={trackerName}
+                                            onChange={(e) => setTrackerName(e.target.value)}
+                                            disabled={isSubmitting}
+                                        />
 
                                         <label>Description</label>
                                         <textarea
                                             className="w-65 !h-25 !p-4 !rounded-xl bg-[var(--neutral0)] resize-none"
                                             placeholder="This tracker is for..."
                                             rows={3}
+                                            value={description}
+                                            onChange={(e) => setDescription(e.target.value)}
+                                            disabled={isSubmitting}
                                         />
                                     </div>
                                 </div>
@@ -192,44 +344,64 @@ function CreateTrackerForm({ show, onClose }) {
                                 <div className="flex flex-row gap-5 mb-2">
                                     <div className="flex flex-col gap-2">
                                         <label>Bank Name</label>
-                                        <input className="w-65 !h-10 !p-4 !rounded-xl" type="text" />
+                                        <input 
+                                            className="w-65 !h-10 !p-4 !rounded-xl" 
+                                            type="text"
+                                            value={bankName}
+                                            onChange={(e) => setBankName(e.target.value)}
+                                            disabled={isSubmitting}
+                                        />
 
                                         <label>Interest Rate</label>
-                                        <input className="w-65 !h-10 !p-4 !rounded-xl" type="number" placeholder="%" />
+                                        <input 
+                                            className="w-65 !h-10 !p-4 !rounded-xl" 
+                                            type="number" 
+                                            placeholder="%"
+                                            value={interestRate}
+                                            onChange={(e) => setInterestRate(e.target.value)}
+                                            disabled={isSubmitting}
+                                        />
                                     </div>
                                 </div>
 
                                 {/* Streak Feature */}
                                 <div className="flex flex-row gap-2 mb-2 items-center">
                                     <h5>Tracker Streaks</h5>
-                                    <ToggleSwitch value={streakEnabled} onChange={setStreakEnabled} />
+                                    <ToggleSwitch 
+                                        value={streakEnabled} 
+                                        onChange={setStreakEnabled}
+                                        disabled={isSubmitting}
+                                    />
                                 </div>
 
-                                {/* Streak Input (toggle-dependent UI) */}
                                 <div className="flex flex-col gap-2">
                                     <label>Minimum Streak Amount</label>
                                     <input
                                         className="w-65 !h-10 !p-4 !rounded-xl"
                                         type="number"
                                         placeholder="$"
-                                        disabled={!streakEnabled}
+                                        value={streakMinAmount}
+                                        onChange={(e) => setStreakMinAmount(e.target.value)}
+                                        disabled={!streakEnabled || isSubmitting}
                                         style={{
-                                            opacity: streakEnabled ? 1 : 0.4,
-                                            cursor: streakEnabled ? "text" : "not-allowed",
+                                            opacity: streakEnabled && !isSubmitting ? 1 : 0.4,
+                                            cursor: streakEnabled && !isSubmitting ? "text" : "not-allowed",
                                         }}
                                     />
                                 </div>
                             </div>
 
-                            {/* -------------------------------------------------
-                               RIGHT SIDE: Goal Calculator + Contributors
-                               ------------------------------------------------- */}
+                            {/* RIGHT SIDE */}
                             <div className="//Right flex flex-col">
 
                                 {/* Goal Toggle */}
                                 <div className="flex flex-row gap-2">
                                     <h5>Tracker Goal</h5>
-                                    <ToggleSwitch value={goalEnabled} onChange={setGoalEnabled} />
+                                    <ToggleSwitch 
+                                        value={goalEnabled} 
+                                        onChange={setGoalEnabled}
+                                        disabled={isSubmitting}
+                                    />
                                 </div>
 
                                 {/* Goal Calculation Section */}
@@ -239,28 +411,26 @@ function CreateTrackerForm({ show, onClose }) {
                                         className="w-65 !h-10 !p-4 !rounded-xl"
                                         type="number"
                                         placeholder="$"
-                                        disabled={!goalEnabled}
+                                        disabled={!goalEnabled || isSubmitting}
                                         style={{
-                                            opacity: goalEnabled ? 1 : 0.4,
-                                            cursor: goalEnabled ? "text" : "not-allowed",
+                                            opacity: goalEnabled && !isSubmitting ? 1 : 0.4,
+                                            cursor: goalEnabled && !isSubmitting ? "text" : "not-allowed",
                                         }}
                                         value={goalAmount}
                                         onChange={(e) => setGoalAmount(e.target.value)}
                                     />
 
-                                    {/* Commitment Inputs (Mutually Exclusive Fields) */}
                                     <label>Enter Commitment</label>
 
                                     <div className="flex flex-row gap-3 w-65 items-center">
-                                        {/* Minimum Amount Input */}
                                         <input
                                             className="w-full !h-10 !p-4 !rounded-xl"
                                             type="number"
                                             placeholder="$ Min"
-                                            disabled={!goalEnabled || goalDate !== ""}
+                                            disabled={!goalEnabled || goalDate !== "" || isSubmitting}
                                             style={{
-                                                opacity: (!goalEnabled || goalDate) ? 0.4 : 1,
-                                                cursor: (!goalEnabled || goalDate) ? "not-allowed" : "text",
+                                                opacity: (!goalEnabled || goalDate || isSubmitting) ? 0.4 : 1,
+                                                cursor: (!goalEnabled || goalDate || isSubmitting) ? "not-allowed" : "text",
                                             }}
                                             value={minAmount}
                                             onChange={(e) => {
@@ -271,14 +441,13 @@ function CreateTrackerForm({ show, onClose }) {
 
                                         <h5>or</h5>
 
-                                        {/* Date Input */}
                                         <input
                                             className="!w-30 !h-10 !p-4 !rounded-xl !text-xs text-[var(--neutral2)]"
                                             type="date"
-                                            disabled={!goalEnabled || minAmount !== ""}
+                                            disabled={!goalEnabled || minAmount !== "" || isSubmitting}
                                             style={{
-                                                opacity: (!goalEnabled || minAmount) ? 0.4 : 1,
-                                                cursor: (!goalEnabled || minAmount) ? "not-allowed" : "text",
+                                                opacity: (!goalEnabled || minAmount || isSubmitting) ? 0.4 : 1,
+                                                cursor: (!goalEnabled || minAmount || isSubmitting) ? "not-allowed" : "text",
                                             }}
                                             value={goalDate}
                                             onChange={(e) => {
@@ -302,7 +471,11 @@ function CreateTrackerForm({ show, onClose }) {
                                 {/* Contributor Toggle */}
                                 <div className="flex flex-row gap-2 mb-1">
                                     <h5>Tracker Contributor</h5>
-                                    <ToggleSwitch value={contributionEnabled} onChange={setContributionEnabled} />
+                                    <ToggleSwitch 
+                                        value={contributionEnabled} 
+                                        onChange={setContributionEnabled}
+                                        disabled={isSubmitting}
+                                    />
                                 </div>
 
                                 {/* Contributor Fields */}
@@ -313,29 +486,27 @@ function CreateTrackerForm({ show, onClose }) {
                                         <ul className="flex flex-col gap-1">
                                             {contributors.map((contributor, index) => (
                                                 <div key={index} className="flex flex-row items-center gap-2">
-                                                    {/* Username Input */}
                                                     <input
                                                         className="w-[85%] !h-10 !p-4 !rounded-xl"
                                                         type="text"
                                                         placeholder="@"
-                                                        disabled={!contributionEnabled}
+                                                        disabled={!contributionEnabled || isSubmitting}
                                                         style={{
-                                                            opacity: contributionEnabled ? 1 : 0.4,
-                                                            cursor: contributionEnabled ? "text" : "not-allowed",
+                                                            opacity: contributionEnabled && !isSubmitting ? 1 : 0.4,
+                                                            cursor: contributionEnabled && !isSubmitting ? "text" : "not-allowed",
                                                         }}
                                                         value={contributor}
                                                         onChange={(e) => updateContributor(index, e.target.value)}
                                                     />
 
-                                                    {/* Remove Contributor Button */}
                                                     <a
                                                         className="close-icon !text-2xl !text-[var(--neutral2)]"
                                                         onClick={() =>
-                                                            contributionEnabled && removeContributor(index)
+                                                            contributionEnabled && !isSubmitting && removeContributor(index)
                                                         }
                                                         style={{
-                                                            cursor: contributionEnabled ? "pointer" : "not-allowed",
-                                                            opacity: contributionEnabled ? 1 : 0.4,
+                                                            cursor: contributionEnabled && !isSubmitting ? "pointer" : "not-allowed",
+                                                            opacity: contributionEnabled && !isSubmitting ? 1 : 0.4,
                                                         }}
                                                     >
                                                         ×
@@ -344,13 +515,12 @@ function CreateTrackerForm({ show, onClose }) {
                                             ))}
                                         </ul>
 
-                                        {/* Add Contributor Button */}
                                         <a
                                             className="!text-[var(--neutral2)]"
-                                            onClick={contributionEnabled ? addContributor : undefined}
+                                            onClick={contributionEnabled && !isSubmitting ? addContributor : undefined}
                                             style={{
-                                                cursor: contributionEnabled ? "pointer" : "not-allowed",
-                                                opacity: contributionEnabled ? 1 : 0.4,
+                                                cursor: contributionEnabled && !isSubmitting ? "pointer" : "not-allowed",
+                                                opacity: contributionEnabled && !isSubmitting ? 1 : 0.4,
                                             }}
                                         >
                                             add more
@@ -362,14 +532,17 @@ function CreateTrackerForm({ show, onClose }) {
                     </form>
                 </div>
 
-                {/* -------------------------------------------------------------
-                    SUBMIT BUTTON (Supabase integration coming soon)
-                    ------------------------------------------------------------- */}
+                {/* SUBMIT BUTTON */}
                 <button
-                    onClick={onClose}
+                    onClick={handleSubmit}
+                    disabled={isSubmitting}
                     className="mt-4 w-full py-3 bg-[var(--green0)] text-white rounded-xl"
+                    style={{
+                        cursor: isSubmitting ? "not-allowed" : "pointer",
+                        opacity: isSubmitting ? 0.6 : 1
+                    }}
                 >
-                    Create Tracker
+                    {isSubmitting ? "Creating..." : "Create Tracker"}
                 </button>
             </div>
         </div>

@@ -1,17 +1,18 @@
 // NavigationBar.jsx
 // -----------------------------------------------------------------------------
-// Main sidebar navigation used across the SaveIt application.
-// Provides quick access to dashboard, trackers, statistics, profile,
-// settings, and logout functionality.
+// PRIMARY PURPOSE:
+// Provides the main sidebar navigation for the SaveIt application.
+// Handles route-based active highlighting, navigation actions, and logout
+// confirmation using a shared modal component.
+// -----------------------------------------------------------------------------
 //
-// Core responsibilities:
-// - Render navigation buttons with active route highlighting
-// - Show logout confirmation modal
-// - Handle Supabase sign-out logic
+// CORE RESPONSIBILITIES:
+// - Render sidebar navigation with visual active-state indication
+// - Open a logout confirmation modal before signing out
+// - Perform Supabase logout via backend service logic
 //
-// This file is documented following maintainability guidelines to support
-// future developers who extend the navigation, redesign the sidebar, or
-// modify logout logic.
+// This file follows maintainable documentation standards for readability and
+// future extension (e.g., new routes, redesigned layout, role-based rules).
 // -----------------------------------------------------------------------------
 
 import { useState } from "react";
@@ -24,7 +25,7 @@ import SettingsIcon from "../assets/icons/settings-2-outline.svg?react";
 import LogOutIcon from "../assets/icons/log-out-outline.svg?react";
 
 import Modal from "./Modal.jsx";
-import supabase from "../supabase-client";
+import { logoutUser } from "../services/DatabaseControl.js";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 
 function NavigationBar() {
@@ -36,25 +37,26 @@ function NavigationBar() {
 
   // ---------------------------------------------------------------------------
   // confirmLogout()
-  // Logs the user out of Supabase and returns them to the login screen.
-  //
-  // Future maintainers:
-  // - You may add cleanup logic (localStorage clearing, analytics logging, etc.)
-  //   before navigation.
+  // Handles the logout process by calling the separated backend service.
+  // Redirects the user to the login page after a successful sign-out.
   // ---------------------------------------------------------------------------
   const confirmLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/login");
+    try {
+      await logoutUser();
+      navigate("/login");
+    } catch (error) {
+      console.error("Logout failed:", error);
+    }
   };
 
-  // Styling classes for active navigation buttons
+  // Predefined active styling rules for selected menu items
   const activeClass = "bg-[var(--green3)] text-white";
   const activeStyle = { backgroundColor: "var(--green3)", color: "white" };
 
   // ---------------------------------------------------------------------------
   // isActive(path)
-  // Determines if the current route matches or begins with the provided path.
-  // Allows nested paths (e.g., /trackers/123) to highlight correctly.
+  // Detects if the current route matches or begins with the provided path.
+  // Supports sub-routes (e.g., /trackers/123 => active for /trackers).
   // ---------------------------------------------------------------------------
   const isActive = (path) => {
     return location.pathname === path || location.pathname.startsWith(path + "/");
@@ -63,19 +65,19 @@ function NavigationBar() {
   // ---------------------------------------------------------------------------
   // Button Component
   //
-  // Small helper component that:
-  // - Renders consistent navigation buttons
-  // - Applies active styles based on routing
-  // - Prevents repetitive markup in the main JSX
+  // Helper component for rendering sidebar navigation buttons with:
+  // - Consistent structure and spacing
+  // - Automatic active highlighting based on routing
+  // - Centralized icon styling logic
   //
   // Props:
-  // - to: Route path to navigate to
-  // - Icon: Icon component to render
-  // - children: Label to display
+  // - to: navigation path
+  // - Icon: SVG icon component
+  // - children: button label
   //
-  // Future maintainers:
-  // - Can be extracted into its own file if reused elsewhere
-  // - Could support tooltips or access roles in the future
+  // Maintainability notes:
+  // - Can be transferred to its own file if reused in a different layout
+  // - Could be enhanced with tooltips or permission-based visibility
   // ---------------------------------------------------------------------------
   const Button = ({ to, Icon, children }) => {
     const active = isActive(to);
@@ -105,22 +107,22 @@ function NavigationBar() {
   return (
     <>
       {/* -----------------------------------------------------------------------
-         MAIN NAVIGATION SIDEBAR (Desktop View)
+         MAIN SIDEBAR (Desktop View)
          -----------------------------------------------------------------------
-         Contains:
+         Structure:
          - Branding section
-         - Navigation links
-         - Logout button that opens a modal
+         - Navigation categories
+         - Logout trigger with modal confirmation
          --------------------------------------------------------------------- */}
       <div className="hidden xl:flex min-h-screen flex-col items-center justify-between bg-[var(--green1)] p-3 pt-10 border-[var(--neutral1)] border-2">
 
-        {/* BRANDING AREA */}
+        {/* BRAND LOGO + APP NAME */}
         <div className="flex flex-col items-center">
           <img src={SaveItLogo} alt="SaveIt Logo" className="w-15 h-auto mb-0" />
           <h6>SaveIt</h6>
         </div>
 
-        {/* NAVIGATION BUTTONS */}
+        {/* NAVIGATION BUTTON GROUP */}
         <div className="flex flex-col items-center gap-3">
           <Button to="/dashboard" Icon={HomeIcon}>Dashboard</Button>
           <Button to="/trackers" Icon={TrackerIcon}>Trackers</Button>
@@ -131,13 +133,13 @@ function NavigationBar() {
 
         {/* ---------------------------------------------------------------------
            LOGOUT BUTTON
-           Opens the modal for a confirmation before signing out.
+           Opens a confirmation modal rather than signing out immediately.
            ------------------------------------------------------------------- */}
         <div className="flex flex-row justify-start items-center w-full pl-5 pb-3">
           <a
             href="#"
             onClick={(e) => {
-              e.preventDefault(); // Prevents accidental navigation due to <a> tag
+              e.preventDefault(); // Prevents accidental navigation
               setShowLogout(true);
             }}
             className="!text-[var(--neutral3)] p-0 !bg-transparent hover:border-0 flex items-center gap-2 h-auto w-40"
@@ -150,8 +152,8 @@ function NavigationBar() {
 
       {/* -----------------------------------------------------------------------
          LOGOUT CONFIRMATION MODAL
-         Uses shared Modal component for consistent UI/UX.
-         Triggered when `showLogout` becomes true.
+         Uses a shared modal component for consistent UI/UX.
+         Triggered when showLogout === true.
          --------------------------------------------------------------------- */}
       <Modal
         show={showLogout}

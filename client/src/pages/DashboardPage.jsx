@@ -1,78 +1,135 @@
 // DashboardPage.jsx
 // -----------------------------------------------------------------------------
-// PRIMARY FUNCTION:
-// The Dashboard serves as the main landing page for authenticated users.
-// It provides a high-level summary of:
-//    • User greeting
-//    • Streak performance widget
-//    • Quick-access tracker preview carousel
-//    • Space for statistics and recent transactions
+// PRIMARY ROLE
+// The Dashboard is the authenticated user’s main hub. It provides:
+//    • Personalized greeting using profile data
+//    • Streak statistics overview (today, current, all-time)
+//    • Scrollable tracker preview carousel
+//    • Placeholder sections for future analytics + transaction tables
 //
-// CURRENT STATE (STATIC LEGACY VERSION):
-// All data displayed (client name, streak values, tracker info) is currently
-// hardcoded and meant for UI demonstration only. Dynamic integration with
-// Supabase is planned for future development.
+// DATA SOURCES (via DatabaseControl service):
+//    - getCurrentUser()        → ensures valid session
+//    - getUserProfile()        → username, user metadata
+//    - getUserTrackers()       → list of trackers created by the user
+//    - getUserStreakStats()    → global streak progress for the user
 //
-// FUTURE IMPLEMENTATION:
-// - Replace static variables with real-time database values:
-//      • User data (name, streak stats, badge level)
-//      • Tracker performance / streak contributions
-//      • Today's savings computation
-// - Fetch user trackers and render <TrackerCard /> dynamically
-// - Populate statistics and transaction widgets with actual data
-// - Add skeleton loading behavior while fetching data
-//
-// ARCHITECTURE NOTES:
-// This Dashboard is structured into two main sections:
-//
-//   Left Panel  → Streak Widget (progress-driven visual summary)
-//   Right Panel → Tracker carousel + statistics + transactions
-//
-// Each section is modular and prepared for future dynamic rendering.
+// REFETCH LOGIC
+// The Dashboard re-fetches data automatically whenever trackers are updated
+// (edit/delete) by using a "dashboardUpdateKey" that increments on changes.
 // -----------------------------------------------------------------------------
 
+import { useEffect, useState } from "react";
 import TrackerCard from "../components/TrackerCard";
 import StreakBadge from "../assets/badges/streakBadge4.svg?react";
+
+import { 
+    getCurrentUser, 
+    getUserProfile, 
+    getUserTrackers, 
+    getUserStreakStats 
+} from "../services/DatabaseControl";
 
 function DashboardPage() {
 
     // -------------------------------------------------------------------------
-    // STATIC UI DEMO DATA (to be replaced with Supabase fetch)
+    // STATE MANAGEMENT
     // -------------------------------------------------------------------------
-    const clientName = "Mac Darren Louis";
+    const [profile, setProfile] = useState(null);      // Current user profile
+    const [trackers, setTrackers] = useState([]);      // All trackers owned by the user
+    const [streak, setStreak] = useState(null);        // Streak statistics
+    const [loading, setLoading] = useState(true);       // Global loading indicator
 
-    // TODAY'S STREAK SUMMARY
+    // Incrementing this key forces a data refresh
+    const [dashboardUpdateKey, setDashboardUpdateKey] = useState(0);
+
+    // -------------------------------------------------------------------------
+    // INITIAL + REFRESH DATA FETCH
+    // Runs on mount and whenever dashboardUpdateKey changes.
+    // -------------------------------------------------------------------------
+    useEffect(() => {
+        async function loadDashboard() {
+            setLoading(true);
+
+            // 1. Validate auth state
+            const { user, error: userError } = await getCurrentUser();
+            if (userError || !user) {
+                setLoading(false);
+                return; // You may redirect to login here in the future
+            }
+
+            const userId = user.id;
+
+            // 2. Fetch all required dashboard data concurrently
+            const [profileResult, trackersResult, streakResult] = await Promise.all([
+                getUserProfile(userId),
+                getUserTrackers(userId),
+                getUserStreakStats(userId)
+            ]);
+
+            setProfile(profileResult.data);
+            setTrackers(trackersResult.data || []);
+            setStreak(streakResult.data);
+            setLoading(false);
+        }
+
+        loadDashboard();
+    }, [dashboardUpdateKey]);
+
+    // -------------------------------------------------------------------------
+    // TRACKER UPDATE HANDLER
+    // Triggered when TrackerCard reports an update or delete event.
+    // Causes full dashboard refresh.
+    // -------------------------------------------------------------------------
+    const handleTrackerUpdate = (changeInfo) => {
+        console.log("Dashboard tracker update:", changeInfo);
+        setDashboardUpdateKey(prev => prev + 1);
+    };
+
+    // -------------------------------------------------------------------------
+    // TEMPORARY STATIC VALUES
+    // These placeholders will eventually be replaced with streakResult.data.
+    // -------------------------------------------------------------------------
     const fstreakTotalSavedToday = 200;
-
-    // CURRENT TRACKER STREAK DETAILS
     const fstreakTrackerName = "LandBank";
     const fstreakTrackerSaved = 530;
     const fstreakDays = 300;
     const fstreakBadge = "Gold";
-
-    // ALL-TIME STREAK STATS
     const fstreakHighestDays = 450;
     const fstreakHighestBadge = "Diamond";
     const fstreakHighestSaved = 1050;
 
+    // -------------------------------------------------------------------------
+    // GLOBAL LOADING STATE
+    // -------------------------------------------------------------------------
+    if (loading) {
+        return (
+            <div className="flex justify-center items-center h-full">
+                <h1>Loading Dashboard...</h1>
+            </div>
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // MAIN RENDER
+    // -------------------------------------------------------------------------
     return (
         <>
             <div className="flex justify-center p-5 h-full">
                 <div className="flex flex-col w-full max-w-[95em] max-h-[55em]">
 
-                    {/* USER GREETING */}
-                    <h1>Hello, {clientName} </h1>
+                    {/* USER GREETING -------------------------------------------------- */}
+                    <h1>Hello, {profile?.username}</h1>
 
                     <div className="flex flex-row h-full gap-5">
 
                         {/* -----------------------------------------------------------------
-                           LEFT PANEL — STREAK WIDGET
-                           Displays streak progress, today's stats, current streak,
-                           and all-time streak achievements.
+                           LEFT PANEL — STREAK OVERVIEW WIDGET
+                           Displays streak progress, today’s activity,
+                           current streak details, and all-time achievements.
                            ----------------------------------------------------------------- */}
-                        <div className="//STREAKS-WIDGET flex flex-col items-center min-w-120 shadow-lg bg-[var(--green0)] rounded-4xl p-5 gap-2">
+                        <div className="flex flex-col items-center min-w-120 shadow-lg bg-[var(--green0)] rounded-4xl p-5 gap-2">
 
-                            {/* STREAK BADGE (large graphic) */}
+                            {/* MAIN STREAK BADGE GRAPHIC */}
                             <div className="flex bg-[var(--green0)] justify-center relative z-0 fx-hover-scale mx-1">
                                 <div className="flex flex-col justify-center items-center absolute inset-0 z-2 pointer-events-none">
                                     <h2 className="translate-y-2 text-neutral-50 [text-shadow:2px_2px_4px_rgba(0,0,0,0.5)]">
@@ -87,10 +144,10 @@ function DashboardPage() {
 
                             <h5>Streak Information</h5>
 
-                            {/* STREAK INFO LIST */}
-                            <div className="//DYNAMIC flex flex-col w-full h-full gap-3">
+                            {/* STREAK DETAIL GRID */}
+                            <div className="flex flex-col w-full h-full gap-3">
 
-                                {/* Activated vs Unactivated Widgets (static for now) */}
+                                {/* ACTIVATED / NON-ACTIVATED TRACKERS (placeholder) */}
                                 <div className="flex flex-row gap-3">
                                     <div className="flex flex-col items-center p-3 gap-2 bg-[var(--green1)] w-full h-30 rounded-3xl">
                                         <h5>Activated</h5>
@@ -102,7 +159,7 @@ function DashboardPage() {
                                     </div>
                                 </div>
 
-                                {/* MAIN STREAK DETAILS */}
+                                {/* TODAY / CURRENT / ALL-TIME SECTIONS */}
                                 <div className="flex flex-col items-center p-3 bg-[var(--green1)] w-full h-full rounded-3xl gap-1">
 
                                     {/* TODAY */}
@@ -131,7 +188,7 @@ function DashboardPage() {
                                         <h5>{fstreakBadge}</h5>
                                     </div>
 
-                                    {/* ALL-TIME STREAK DATA */}
+                                    {/* ALL-TIME */}
                                     <h4 className="text-[var(--neutral3)]">----- All Time -----</h4>
                                     <div className="text-[var(--neutral2)] flex flex-row justify-between w-full px-5">
                                         <h5>Highest Saved</h5>
@@ -152,30 +209,33 @@ function DashboardPage() {
                         {/* -----------------------------------------------------------------
                            RIGHT PANEL — TRACKERS + STATISTICS + TRANSACTIONS
                            ----------------------------------------------------------------- */}
-                        <div className="//RIGHT w-full flex flex-col gap-0">
+                        <div className="w-full flex flex-col gap-0">
 
-                            {/* TRACKER CARDS ROW — scrollable */}
-                            <div className="//TRACKER-CONTAINERS flex flex-row gap-x-5 w-255 min-h-56 justify-start overflow-x-auto 
-                            // overflow-y-hidden scrollbar-hover scroll-smooth px-2 snap-x snap-mandatory">
-                                <div className="flex flex-row gap-3 justify-start">
-
-                                    {/* TODO: Replace with dynamic mapping of user trackers */}
-                                    <TrackerCard />
-                                    <TrackerCard />
-                                    <TrackerCard />
-                                    <TrackerCard />
-                                    <TrackerCard />
-
+                            {/* TRACKER PREVIEW CAROUSEL */}
+                            <div className="flex flex-row gap-x-5 w-255 min-h-56 justify-start overflow-x-auto scrollbar-hover px-2 snap-x snap-mandatory">
+                                <div className="flex flex-row gap-3">
+                                    {trackers.length > 0 ? (
+                                        trackers.map(t => (
+                                            <TrackerCard
+                                                key={t.id}
+                                                tracker={t}
+                                                isDashboardContext={true}
+                                                onTrackerUpdated={handleTrackerUpdate}
+                                            />
+                                        ))
+                                    ) : (
+                                        <div className="p-5 text-lg text-[var(--neutral3)]">
+                                            You haven't created any trackers yet.
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
-                            {/* STATISTICS WIDGET (placeholder for future charts) */}
-                            <div className="//STATISTICS-WIDGET w-full h-60 flex mb-5 bg-[var(--green0)] rounded-4xl shadow-lg">
-                            </div>
+                            {/* FUTURE STATISTICS WIDGET */}
+                            <div className="w-full h-60 flex mb-5 bg-[var(--green0)] rounded-4xl shadow-lg"></div>
 
-                            {/* TRANSACTION HISTORY WIDGET (future table/list) */}
-                            <div className="//TRANSACTION-WIDGET w-full h-full flex bg-[var(--green0)] rounded-4xl shadow-lg">
-                            </div>
+                            {/* FUTURE TRANSACTION HISTORY MINI TABLE */}
+                            <div className="w-full h-full flex bg-[var(--green0)] rounded-4xl shadow-lg"></div>
                         </div>
                     </div>
                 </div>

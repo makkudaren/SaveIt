@@ -1,37 +1,15 @@
-// ModalTransaction.jsx
+// ModalTransaction.jsx - UPDATED FOR CUSTOM ERROR MESSAGES
 // -----------------------------------------------------------------------------
 // PRIMARY FUNCTION:
-// This component displays a **transaction result modal** after a Deposit or
-// Withdraw action. It is triggered by the parent tracker view (Tracker.jsx)
-// immediately after DepositForm or WithdrawForm calls onSuccess().
-//
-// It provides clear feedback to the user through:
-//   - Dynamic title (Deposit / Withdraw)
-//   - Success or error icon
-//   - Contextual messages (e.g., "Deposit Successful!")
-//   - Tracker name reference
-//
-// CURRENT STATE (LEGACY VERSION):
-// - Displays UI feedback only.
-// - Does NOT reflect actual database results yet.
-// - Success/failed state is entirely controlled by props coming from the parent.
-//
-// FUTURE IMPLEMENTATION:
-// - Integrate with backend validation once Supabase transactions are functional.
-// - Expand to support multiple error types (insufficient funds, unauthorized,
-//   connection failure, validation errors, etc.).
-// - Could be extended to auto-close after a timer.
-// - Could also include transaction ID once backend generates one.
-//
-//
-// Display-only modal; no business logic is processed here.
+// This component displays a transaction result modal.
 // -----------------------------------------------------------------------------
 
 import React from "react";
 import CheckIcon from "../assets/icons/checkmark-circle-outline.svg?react"; 
 import ErrorIcon from "../assets/icons/alert-circle-outline.svg?react"; 
 
-function ModalTransaction({ show, type, status, trackerName, onClose }) {
+// NEW PROP: transactionMessage is used for custom failure messages
+function ModalTransaction({ show, type, status, trackerName, onClose, transactionMessage }) {
     // Prevent modal from rendering unless activated
     if (!show) return null;
 
@@ -58,7 +36,10 @@ function ModalTransaction({ show, type, status, trackerName, onClose }) {
         ? "Deposit Failed!"
         : "Withdraw Failed!";
 
-    const failSubMsg = "Something went wrong. Please try again.";
+    // Use the custom message if provided, otherwise fall back to a generic one
+    const failSubMsg = transactionMessage && !isSuccess 
+        ? transactionMessage 
+        : "Something went wrong. Please try again."; 
 
     return (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-50">
@@ -91,7 +72,7 @@ function ModalTransaction({ show, type, status, trackerName, onClose }) {
                     {isSuccess ? successMainMsg : failMainMsg}
                 </p>
 
-                {/* SUB MESSAGE */}
+                {/* SUB MESSAGE (Will display custom error here) */}
                 <p className="text-[var(--neutral2)] text-center">
                     {isSuccess ? successSubMsg : failSubMsg}
                 </p>
@@ -105,26 +86,13 @@ export default ModalTransaction;
 /* -----------------------------------------------------------------------------
 USAGE EXAMPLES (FOR DOCUMENTATION):
 
-SUCCESS DISPLAY:
-<ModalTransaction
-    show={show}
-    type="deposit"
-    status="success"
-    trackerName="Insurance Pru Life UK"
-    onClose={() => setShow(false)}
-/>
-
-FAILED DISPLAY:
+FAILED DISPLAY WITH CUSTOM MESSAGE:
 <ModalTransaction
     show={show}
     type="withdraw"
     status="failed"
     trackerName="LandBank Account"
+    transactionMessage="Insufficient funds. Current balance is $50.00" // NEW
     onClose={() => setShow(false)}
 />
-
-NOTES:
-- These examples are meant for developers integrating this component.
-- 'type' and 'status' values should come from real transaction logic once database
-  operations are implemented in DepositForm, WithdrawForm, and Tracker.jsx.
 ----------------------------------------------------------------------------- */
