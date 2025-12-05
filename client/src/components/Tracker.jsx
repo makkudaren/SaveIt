@@ -11,6 +11,7 @@ import SharedIcon from "../assets/icons/people-outline.svg?react";
 import TransactionHistory from "./TransactionHistory";
 import ModalTransaction from "./ModalTransaction";
 import EditTrackerForm from "./EditTrackerForm";
+import LoadingScreen from "./LoadingMode";
 import WithdrawForm from "./WithdrawForm";
 import DepositForm from "./DepositForm";
 import Modal from "./Modal";
@@ -150,14 +151,14 @@ function Tracker({ tracker, onTrackerChange }) {
     let recentActivityContent;
     if (isRecentLoading) {
         recentActivityContent = (
-            <div className="flex justify-center items-center h-full trans-smooth">
-                <p className="text-[var(--neutral3)]">Loading recent activity...</p>
+            <div className="flex justify-center items-center translate-y-20 scale-90 h-full //trans-smooth">
+                <LoadingScreen text={"Loading Recent Activity..."}/>
             </div>
         );
     } else if (recentTransactions.length === 0) {
         recentActivityContent = (
             <div className="flex justify-center items-center h-full trans-smooth">
-                <p className="text-[var(--neutral3)]">No recent activity.</p>
+                <p className="text-[var(--neutral3)] my-5">No recent activity.</p>
             </div>
         );
     } else {
@@ -390,13 +391,13 @@ function Tracker({ tracker, onTrackerChange }) {
                         </div>
 
                         <div className="flex gap-2">
-                            <button className="!h-12 w-30"
+                            <button className="!h-12 w-30 btn-3D"
                                 onClick={() => setShowDepositForm(true)}
                             >
                                 Deposit
                             </button>
 
-                            <button className="!h-12 w-30"
+                            <button className="!h-12 w-30 btn-3D"
                                 onClick={() => setShowWithdrawForm(true)}
                             >
                                 Withdraw
@@ -443,9 +444,9 @@ function Tracker({ tracker, onTrackerChange }) {
                     </div>
 
                     {/* PROGRESS BAR (CONDITIONAL RENDERING) (Now uses invisible) */}
-                    <div className={`w-full h-2 bg-[var(--neutral1)] rounded-full ${goalFeatureClass}`}>
+                    <div className={`w-full h-2.5 bg-[var(--neutral1)] rounded-full ${goalFeatureClass}`}>
                         <div
-                            className="h-2 bg-[var(--green3)] rounded-full transition-all duration-300"
+                            className="h-full bg-[var(--green3)] rounded-full transition-all duration-300"
                             style={{ width: `${progressInt}%` }}
                         ></div>
                     </div>

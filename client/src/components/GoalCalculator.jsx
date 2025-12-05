@@ -222,7 +222,7 @@ function GoalCalculator({ show, onClose }) {
                     {/* SUBMIT BUTTON — triggers handleCalculate */}
                     <button
                         type="submit"  // Enables Enter key support
-                        className="mt-4 w-full py-3 bg-[var(--green0)] text-white rounded-xl"
+                        className="mt-4 w-full py-3 bg-[var(--green0)] text-white rounded-xl btn-3D"
                     >
                         Calculate
                     </button>

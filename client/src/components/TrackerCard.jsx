@@ -184,7 +184,7 @@ function TrackerCard({ tracker, onCardClick, onTrackerUpdated, isDashboardContex
                                 e.stopPropagation();
                                 setShowMenu((prev) => !prev);
                             }}
-                            className="!w-9 !h-9 !rounded-full !bg-[var(--green3)] flex items-center justify-center shadow hover:opacity-80 transition"
+                            className="!w-9 !h-9 !rounded-full !bg-[var(--green3)] flex items-center justify-center shadow hover:opacity-80 transition "
                         >
                             <MoreIcon className="w-9 h-9 fill-[var(--neutral0)]" />
                         </button>
@@ -285,9 +285,9 @@ function TrackerCard({ tracker, onCardClick, onTrackerUpdated, isDashboardContex
                             <h5>{progressInt}%</h5>
                         </div>
 
-                        <div className="w-full h-2 bg-[var(--neutral1)] rounded-full">
+                        <div className="w-full h-2.5 bg-[var(--neutral1)] rounded-full">
                             <div
-                                className="h-2 bg-[var(--green3)] rounded-full transition-all duration-300"
+                                className="h-full bg-[var(--green3)] rounded-full transition-all duration-300"
                                 style={{ width: `${progressInt}%` }}
                             ></div>
                         </div>

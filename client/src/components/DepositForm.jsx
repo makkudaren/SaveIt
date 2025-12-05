@@ -175,7 +175,7 @@ function DepositForm({ show, onClose, onSuccess, tracker }) {
                 <button
                     type="submit"
                     onClick={submitTransaction}
-                    className="mt-4 w-full py-3 bg-[var(--green0)] text-white rounded-xl"
+                    className="mt-4 w-full py-3 bg-[var(--green0)] text-white rounded-xl btn-3D"
                     disabled={isProcessing}
                 >
                     {isProcessing ? "Processing..." : "Deposit"}

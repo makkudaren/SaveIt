@@ -82,7 +82,7 @@ function NavigationBar() {
   const Button = ({ to, Icon, children }) => {
     const active = isActive(to);
 
-    const classes = `nav-button flex items-center gap-3 px-3 py-2 rounded-xl w-full ${
+    const classes = `nav-button btn-3D flex items-center gap-3 px-3 py-2 rounded-xl w-full ${
       active ? activeClass : ""
     }`;
     const style = active ? activeStyle : undefined;
@@ -123,12 +123,12 @@ function NavigationBar() {
         </div>
 
         {/* NAVIGATION BUTTON GROUP */}
-        <div className="flex flex-col items-center gap-3">
-          <Button to="/dashboard" Icon={HomeIcon}>Dashboard</Button>
-          <Button to="/trackers" Icon={TrackerIcon}>Trackers</Button>
-          <Button to="/statistics" Icon={StatisticsIcon}>Statistics</Button>
-          <Button to="/profile" Icon={ProfileIcon}>Profile</Button>
-          <Button to="/settings" Icon={SettingsIcon}>Settings</Button>
+        <div className="flex flex-col items-center gap-3 ">
+          <Button className="!btn-3D" to="/dashboard" Icon={HomeIcon}>Dashboard</Button>
+          <Button className="!btn-3D" to="/trackers" Icon={TrackerIcon}>Trackers</Button>
+          <Button className="!btn-3D" to="/statistics" Icon={StatisticsIcon}>Statistics</Button>
+          <Button className="!btn-3D" to="/profile" Icon={ProfileIcon}>Profile</Button>
+          <Button className="!btn-3D" to="/settings" Icon={SettingsIcon}>Settings</Button>
         </div>
 
         {/* ---------------------------------------------------------------------

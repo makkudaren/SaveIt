@@ -536,7 +536,7 @@ function CreateTrackerForm({ show, onClose, onSuccess }) {
                 <button
                     onClick={handleSubmit}
                     disabled={isSubmitting}
-                    className="mt-4 w-full py-3 bg-[var(--green0)] text-white rounded-xl"
+                    className="mt-4 w-full py-3 bg-[var(--green0)] text-white rounded-xl btn-3D"
                     style={{
                         cursor: isSubmitting ? "not-allowed" : "pointer",
                         opacity: isSubmitting ? 0.6 : 1

@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect } from "react";
 import { getTrackerTransactions } from "../services/DatabaseControl";
+import LoadingScreen from "./LoadingMode";
 
 // Expects: 
 // - show: controls modal visibility
@@ -84,8 +85,8 @@ function TransactionHistory({ show, onClose, trackerId }) {
 
     if (isLoading) {
         content = (
-            <div className="text-center p-4 text-[var(--neutral3)]">
-                Loading transaction history...
+            <div className="flex items-center justify-center text-center p-4 translate-y-40 text-[var(--neutral3)]">
+                <LoadingScreen text={"Loading Transaction History..."}/>
             </div>
         );
 
@@ -136,7 +137,7 @@ function TransactionHistory({ show, onClose, trackerId }) {
     // -------------------------------------------------------------------------
     return (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-50">
-            <div className="relative bg-white p-8 w-[50em] h-[35em] rounded-3xl shadow-lg flex flex-col items-start">
+            <div className="relative bg-white p-8 w-[70em] h-[35em] rounded-3xl shadow-lg flex flex-col items-start">
 
                 {/* Close control */}
                 <a onClick={onClose} className="close-icon absolute top-2 right-5">×</a>

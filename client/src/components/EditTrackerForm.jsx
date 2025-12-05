@@ -10,6 +10,7 @@
 
 import React, { useState, useEffect } from "react";
 import ToggleSwitch from "./ToggleSwitch";
+import LoadingScreen from "./LoadingMode";
 import { updateTracker, getTrackerContributors } from "../services/DatabaseControl";
 
 // Receives: show (boolean), onClose handler, tracker object, and success callback.
@@ -289,7 +290,7 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
         return (
             <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-50">
                 <div className="bg-white p-8 w-[39em] h-[48em] rounded-3xl shadow-lg flex justify-center items-center">
-                    <h5 className="text-[var(--neutral3)]">Loading Tracker Data...</h5>
+                    <LoadingScreen text={"Loading Tracker Data..."}/>
                 </div>
             </div>
         );
@@ -560,7 +561,7 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
                 <button
                     onClick={handleSubmit}
                     disabled={isSubmitting}
-                    className="mt-4 w-full py-3 bg-[var(--green0)] text-white rounded-xl"
+                    className="mt-4 w-full py-3 bg-[var(--green0)] text-white rounded-xl btn-3D"
                     style={{
                         cursor: isSubmitting ? "not-allowed" : "pointer",
                         opacity: isSubmitting ? 0.6 : 1

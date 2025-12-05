@@ -20,7 +20,8 @@
 
 import { useEffect, useState } from "react";
 import TrackerCard from "../components/TrackerCard";
-import StreakBadge from "../assets/badges/streakBadge4.svg?react";
+import LoadingScreen from "../components/LoadingMode";
+import StreakBadge from "../assets/badges/streakBadge5.svg?react";
 
 import { 
     getCurrentUser, 
@@ -92,7 +93,7 @@ function DashboardPage() {
     const fstreakTotalSavedToday = 200;
     const fstreakTrackerName = "LandBank";
     const fstreakTrackerSaved = 530;
-    const fstreakDays = 300;
+    const fstreakDays = 5;
     const fstreakBadge = "Gold";
     const fstreakHighestDays = 450;
     const fstreakHighestBadge = "Diamond";
@@ -104,7 +105,7 @@ function DashboardPage() {
     if (loading) {
         return (
             <div className="flex justify-center items-center h-full">
-                <h1>Loading Dashboard...</h1>
+                <LoadingScreen text={"Loading Dashboard..."}/>
             </div>
         );
     }
@@ -131,15 +132,19 @@ function DashboardPage() {
 
                             {/* MAIN STREAK BADGE GRAPHIC */}
                             <div className="flex bg-[var(--green0)] justify-center relative z-0 fx-hover-scale mx-1">
-                                <div className="flex flex-col justify-center items-center absolute inset-0 z-2 pointer-events-none">
-                                    <h2 className="translate-y-2 text-neutral-50 [text-shadow:2px_2px_4px_rgba(0,0,0,0.5)]">
-                                        {fstreakDays}
-                                    </h2>
-                                    <h3 className="-translate-y-2 text-neutral-50 [text-shadow:2px_2px_4px_rgba(0,0,0,0.5)]">
-                                        days
-                                    </h3>
+                                
+                                <div className="streak-badge">
+                                    <div className="flex flex-col justify-center items-center absolute inset-0 z-2 pointer-events-none">
+                                        <h1 className="translate-y-3 text-neutral-50 [text-shadow:2px_2px_4px_rgba(0,0,0,0.5)]">
+                                            {fstreakDays}
+                                        </h1>
+                                        <h2 className="-translate-y-3 text-neutral-50 [text-shadow:2px_2px_4px_rgba(0,0,0,0.5)]">
+                                            days
+                                        </h2>
+                                    </div>
+                                <StreakBadge className="w-50 h-auto scale-145 z-1" />
+
                                 </div>
-                                <StreakBadge className="w-50 h-auto scale-145 streak-badge z-1" />
                             </div>
 
                             <h5>Streak Information</h5>
