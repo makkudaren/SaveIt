@@ -1,17 +1,19 @@
 // DashboardPage.jsx
 // -----------------------------------------------------------------------------
 // PRIMARY ROLE
-// The Dashboard is the authenticated user’s main hub. It provides:
+// The Dashboard is the authenticated user's main hub. It provides:
 //    • Personalized greeting using profile data
 //    • Streak statistics overview (today, current, all-time)
 //    • Scrollable tracker preview carousel
-//    • Placeholder sections for future analytics + transaction tables
+//    • Recent activity across all trackers
+//    • Placeholder sections for future analytics
 //
 // DATA SOURCES (via DatabaseControl service):
-//    - getCurrentUser()        → ensures valid session
-//    - getUserProfile()        → username, user metadata
-//    - getUserTrackers()       → list of trackers created by the user
-//    - getUserStreakStats()    → global streak progress for the user
+//    - getCurrentUser()              → ensures valid session
+//    - getUserProfile()              → username, user metadata
+//    - getUserTrackers()             → list of trackers created by the user
+//    - getUserStreakStats()          → global streak progress for the user
+//    - getUserRecentTransactions()   → recent transactions across all trackers
 //
 // REFETCH LOGIC
 // The Dashboard re-fetches data automatically whenever trackers are updated
@@ -22,13 +24,15 @@ import { useEffect, useState } from "react";
 import TrackerCard from "../components/TrackerCard";
 import LoadingScreen from "../components/LoadingMode";
 import StreakBadge from "../assets/badges/streakBadge5.svg?react";
+import ExpandIcon from "../assets/icons/expand-outline.svg?react";
 
 import { 
     getCurrentUser, 
     getUserProfile, 
     getUserTrackers, 
     getUserStreakStats,
-    getTodayStreakStatus 
+    getTodayStreakStatus,
+    getUserRecentTransactions
 } from "../services/DatabaseControl";
 
 function DashboardPage() {
@@ -45,6 +49,10 @@ function DashboardPage() {
     const [dashboardUpdateKey, setDashboardUpdateKey] = useState(0);
     const [trackerStreakStatuses, setTrackerStreakStatuses] = useState({});
 
+    // Recent Activity State
+    const [recentTransactions, setRecentTransactions] = useState([]);
+    const [isRecentLoading, setIsRecentLoading] = useState(true);
+
     // -------------------------------------------------------------------------
     // INITIAL + REFRESH DATA FETCH
     // Runs on mount and whenever dashboardUpdateKey changes.
@@ -57,21 +65,24 @@ function DashboardPage() {
             const { user, error: userError } = await getCurrentUser();
             if (userError || !user) {
                 setLoading(false);
-                return; // You may redirect to login here in the future
+                return;
             }
 
             const userId = user.id;
 
             // 2. Fetch all required dashboard data concurrently
-            const [profileResult, trackersResult, streakResult] = await Promise.all([
+            const [profileResult, trackersResult, streakResult, recentResult] = await Promise.all([
                 getUserProfile(userId),
                 getUserTrackers(userId),
-                getUserStreakStats(userId)
+                getUserStreakStats(userId),
+                getUserRecentTransactions(userId, 8) // Fetch 8 most recent transactions
             ]);
 
             setProfile(profileResult.data);
             setTrackers(trackersResult.data || []);
             setStreak(streakResult.data);
+            setRecentTransactions(recentResult.data || []);
+            setIsRecentLoading(false);
             setLoading(false);
 
             // Fetch streak statuses for all trackers with streak enabled
@@ -120,6 +131,29 @@ function DashboardPage() {
     };
 
     // -------------------------------------------------------------------------
+    // HELPER FUNCTIONS for Formatting
+    // -------------------------------------------------------------------------
+    const formatAmount = (type, amount) => {
+        const sign = type === 'deposit' ? '+' : '-';
+        const colorClass = type === 'deposit' ? 'text-[var(--green3)]' : 'text-[var(--red3)]';
+        return <span className={colorClass}>{sign} ${parseFloat(amount).toFixed(2)}</span>;
+    };
+    
+    const formatDate = (dateString) => {
+        if (!dateString) return 'N/A';
+        const date = new Date(dateString);
+        return date.toLocaleDateString("en-US", {
+            month: 'numeric', 
+            day: 'numeric', 
+            year: '2-digit'
+        }) + " " + date.toLocaleTimeString("en-US", { 
+            hour: 'numeric', 
+            minute: '2-digit', 
+            hour12: true 
+        }).replace(' ', '');
+    };
+
+    // -------------------------------------------------------------------------
     // TEMPORARY STATIC VALUES
     // These placeholders will eventually be replaced with streakResult.data.
     // -------------------------------------------------------------------------
@@ -131,6 +165,49 @@ function DashboardPage() {
     const fstreakHighestDays = 450;
     const fstreakHighestBadge = "Diamond";
     const fstreakHighestSaved = 1050;
+
+    // -------------------------------------------------------------------------
+    // RENDER: RECENT ACTIVITY CONTENT
+    // -------------------------------------------------------------------------
+    let recentActivityContent;
+    if (isRecentLoading) {
+        recentActivityContent = (
+            <div className="flex justify-center items-center h-40">
+                <LoadingScreen text={"Loading Recent Activity..."}/>
+            </div>
+        );
+    } else if (recentTransactions.length === 0) {
+        recentActivityContent = (
+            <div className="flex justify-center items-center h-40">
+                <p className="text-[var(--neutral3)]">No recent activity.</p>
+            </div>
+        );
+    } else {
+        recentActivityContent = recentTransactions.map((t) => (
+            <div key={t.id} className="flex justify-start w-full h-12 border-b-1 border-[var(--neutral2)] last:border-b-0">
+                {/* AMOUNT */}
+                <div className="w-full flex justify-start items-center font-medium text-sm">
+                    {formatAmount(t.type, t.amount)}
+                </div>
+                {/* TRACKER NAME */}
+                <div className="w-full flex justify-start items-center text-[var(--neutral3)] text-sm">
+                    {t.trackers?.tracker_name || 'N/A'}
+                </div>
+                {/* CONTRIBUTOR */}
+                <div className="w-full flex justify-start items-center text-[var(--neutral3)] text-sm">
+                    {t.profiles?.username || 'N/A'}
+                </div>
+                {/* DATE */}
+                <div className="w-full flex justify-start items-center text-[var(--neutral3)] text-sm">
+                    {formatDate(t.created_at)}
+                </div>
+                {/* TYPE */}
+                <div className="w-full flex justify-start items-center text-[var(--neutral3)] text-sm">
+                    {t.type.charAt(0).toUpperCase() + t.type.slice(1)}
+                </div>
+            </div>
+        ));
+    }
 
     // -------------------------------------------------------------------------
     // GLOBAL LOADING STATE
@@ -148,7 +225,7 @@ function DashboardPage() {
     // -------------------------------------------------------------------------
     return (
         <>
-            <div className="flex justify-center p-5 h-full">
+            <div className="flex justify-center p-5 h-full ">
                 <div className="flex flex-col w-full max-w-[95em] max-h-[55em]">
 
                     {/* USER GREETING -------------------------------------------------- */}
@@ -157,8 +234,8 @@ function DashboardPage() {
                     <div className="flex flex-row h-full gap-5">
 
                         {/* -----------------------------------------------------------------
-                           LEFT PANEL — STREAK OVERVIEW WIDGET
-                           Displays streak progress, today’s activity,
+                           LEFT PANEL – STREAK OVERVIEW WIDGET
+                           Displays streak progress, today's activity,
                            current streak details, and all-time achievements.
                            ----------------------------------------------------------------- */}
                         <div className="flex flex-col items-center min-w-120 shadow-lg bg-[var(--green0)] rounded-4xl p-5 gap-2">
@@ -175,7 +252,7 @@ function DashboardPage() {
                                             days
                                         </h2>
                                     </div>
-                                <StreakBadge className="w-50 h-auto scale-145 z-1" />
+                                <StreakBadge className="w-50 h-auto scale-145 z-1 " />
 
                                 </div>
                             </div>
@@ -245,9 +322,9 @@ function DashboardPage() {
                         </div>
 
                         {/* -----------------------------------------------------------------
-                           RIGHT PANEL — TRACKERS + STATISTICS + TRANSACTIONS
+                           RIGHT PANEL – TRACKERS + RECENT ACTIVITY + STATISTICS
                            ----------------------------------------------------------------- */}
-                        <div className="w-full flex flex-col gap-0">
+                        <div className="w-full flex flex-col gap-5">
 
                             {/* TRACKER PREVIEW CAROUSEL */}
                             <div className="flex flex-row gap-x-5 w-255 min-h-56 justify-start overflow-x-auto scrollbar-hover px-2 snap-x snap-mandatory">
@@ -270,11 +347,44 @@ function DashboardPage() {
                                 </div>
                             </div>
 
-                            {/* FUTURE STATISTICS WIDGET */}
-                            <div className="w-full h-60 flex mb-5 bg-[var(--green0)] rounded-4xl shadow-lg"></div>
+                            {/* RECENT ACTIVITY WIDGET */}
+                            <div className="w-full h-70 bg-[var(--green0)] rounded-4xl shadow-lg p-5">
+                                
+                            </div>
 
                             {/* FUTURE TRANSACTION HISTORY MINI TABLE */}
-                            <div className="w-full h-full flex bg-[var(--green0)] rounded-4xl shadow-lg"></div>
+                            <div className="w-[70%] h-full flex flex-col bg-[var(--green0)] rounded-4xl shadow-lg p-5">
+                                <a
+                                    className=" flex flex-row justify-between"
+                                    href="#"
+                                    onClick={() => setShowTransactionHistory(true)}>
+                                    {/* DYNAMIC COUNT */}
+                                    <h5>Recent Activity ({recentTransactions.length})</h5>
+                                    <ExpandIcon className="w-7 h-7 fill-[var(--neutral3)] hover:scale-110"/>
+                                </a>
+
+                                            {/* HEADER ROW */}
+                                            <div className="flex flex-row justify-between w-[100%] h-8 ">
+                                                <div className="w-full flex justify-start items-center"><label>Amount</label></div>
+                                                <div className="w-full flex justify-start items-center"><label>Tracker</label></div>
+                                                <div className="w-full flex justify-start items-center"><label>Contributor</label></div>
+                                                <div className="w-full flex justify-start items-center"><label>Date</label></div>
+                                                <div className="w-full flex justify-start items-center"><label>Status</label></div>
+                                            </div>
+                                            <div className="bg-[var(--neutral2)] w-[100%] h-0.5 "></div>
+
+                                <div className="w-full h-full overflow-auto">
+                                    
+                                    <div className=" w-[100%] h-20">
+                                        {/* FETCH FROM THE DATABASE */}
+                                        <div className="flex-1 w-[99%] trans-smooth">
+                                            {/* DYNAMIC TRANSACTION DATA ROWS */}
+                                            {recentActivityContent}
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                            </div>
                         </div>
                     </div>
                 </div>

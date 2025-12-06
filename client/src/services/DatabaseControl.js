@@ -603,6 +603,58 @@ export async function getTrackerTransactions(trackerId, limit = 100) {
 }
 
 // -----------------------------------------------------------------------------
+// FETCH RECENT TRANSACTIONS ACROSS ALL USER'S TRACKERS
+// -----------------------------------------------------------------------------
+export async function getUserRecentTransactions(userId = null, limit = 10) {
+    let targetUserId = userId;
+    
+    if (!targetUserId) {
+        targetUserId = await getCurrentUserId();
+    }
+    
+    if (!targetUserId) {
+        return { data: [], error: { message: "No user ID available" } };
+    }
+
+    // First, get all tracker IDs the user has access to
+    const { data: contributorData, error: contributorError } = await supabase
+        .from("tracker_contributors")
+        .select("tracker_id")
+        .eq("user_id", targetUserId);
+
+    if (contributorError) {
+        console.error("Error fetching user trackers:", contributorError);
+        return { data: [], error: contributorError };
+    }
+
+    const trackerIds = contributorData.map(row => row.tracker_id);
+
+    if (trackerIds.length === 0) {
+        return { data: [], error: null };
+    }
+
+    // Fetch transactions from all user's trackers with tracker name
+    return await supabase
+        .from("transactions")
+        .select(`
+            id, 
+            type, 
+            amount, 
+            note, 
+            created_at, 
+            new_balance,
+            tracker_id,
+            trackers (tracker_name),
+            profiles (username)
+        `)
+        .in("tracker_id", trackerIds)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+}
+
+
+
+// -----------------------------------------------------------------------------
 // STREAK MANAGEMENT FUNCTIONS
 // -----------------------------------------------------------------------------
 

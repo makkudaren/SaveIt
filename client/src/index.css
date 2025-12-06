@@ -89,10 +89,10 @@ h5 {
 
 h6 {
   /* For Text-Logos */
-  color: var(--green3);
+  /*color: var(--green3);*/
   font-family: rubik;
-  font-size: 3.2em;
-  line-height: 1.5;
+  font-size: 3em;
+  line-height: 1;
   font-weight: 600;
 }
 
@@ -121,8 +121,8 @@ textarea{
 .nav-button{
   background-color: var(--green0);
   color: var(--neutral2);
-  width: 17rem;
-  height: 4.5rem;
+  /*width: 17rem;
+  height: 4.5rem;*/
   border-radius: 1.5rem;
   text-align: start;
   padding-left: 2rem;
