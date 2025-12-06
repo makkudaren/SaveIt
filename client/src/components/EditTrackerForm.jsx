@@ -13,13 +13,11 @@ import ToggleSwitch from "./ToggleSwitch";
 import LoadingScreen from "./LoadingMode";
 import { updateTracker, getTrackerContributors } from "../services/DatabaseControl";
 
-// Receives: show (boolean), onClose handler, tracker object, and success callback.
 function EditTrackerForm({ show, onClose, tracker, onSuccess }) { 
 
     // -------------------------------------------------------------------------
     // FORM FIELD STATES
     // -------------------------------------------------------------------------
-    // Initialized empty; actual values are loaded when the modal opens.
     const [trackerName, setTrackerName] = useState("");
     const [description, setDescription] = useState("");
     const [bankName, setBankName] = useState("");
@@ -31,7 +29,13 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
     // -------------------------------------------------------------------------
     const [streakEnabled, setStreakEnabled] = useState(false);
     const [goalEnabled, setGoalEnabled] = useState(false);
-       const [contributionEnabled, setContributionEnabled] = useState(false);
+    const [contributionEnabled, setContributionEnabled] = useState(false);
+
+    // NEW: Track original streak state to detect when it's being disabled
+    const [wasStreakEnabled, setWasStreakEnabled] = useState(false);
+
+    // NEW: Warning message state
+    const [streakWarning, setStreakWarning] = useState("");
 
     // -------------------------------------------------------------------------
     // GOAL CALCULATOR STATES
@@ -45,7 +49,6 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
     // -------------------------------------------------------------------------
     // CONTRIBUTOR STATE
     // -------------------------------------------------------------------------
-    // Will hold usernames of collaborators tied to this tracker.
     const [contributors, setContributors] = useState([""]);
     
     // -------------------------------------------------------------------------
@@ -74,8 +77,10 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
             setBankName(tracker.bank_name || "");
             setInterestRate(tracker.interest_rate?.toString() || "");
 
-            // Preload streak values
-            setStreakEnabled(tracker.streak_enabled || false);
+            // Preload streak values and store original state
+            const originalStreakState = tracker.streak_enabled || false;
+            setStreakEnabled(originalStreakState);
+            setWasStreakEnabled(originalStreakState);
             setStreakMinAmount(tracker.streak_min_amount?.toString() || "");
 
             // Preload goal values
@@ -111,12 +116,25 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
         // Reset calculator state when switching trackers
         setResult("");
         setIsError(false);
+        setStreakWarning("");
 
     }, [show, tracker]);
 
     // -------------------------------------------------------------------------
-    // 2. Goal Calculation Logic
-    // Mirrors CreateTrackerForm logic and reacts to goal input changes.
+    // 2. Handle Streak Toggle with Warning
+    // -------------------------------------------------------------------------
+    const handleStreakToggle = (newValue) => {
+        // If turning OFF streaks and they were previously ON, show warning
+        if (wasStreakEnabled && !newValue) {
+            setStreakWarning("⚠️ Warning: Disabling streaks will permanently delete all streak history and progress for this tracker.");
+        } else {
+            setStreakWarning("");
+        }
+        setStreakEnabled(newValue);
+    };
+
+    // -------------------------------------------------------------------------
+    // 3. Goal Calculation Logic
     // -------------------------------------------------------------------------
     useEffect(() => {
         if (!goalEnabled) {
@@ -166,15 +184,12 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
             return;
         }
 
-        // No inputs → clear result
         setResult("");
         setIsError(false);
     }, [goalAmount, minAmount, goalDate, goalEnabled]);
 
-
     // -------------------------------------------------------------------------
-    // 3. Contributor List Handlers
-    // Identical logic used in CreateTrackerForm.
+    // 4. Contributor List Handlers
     // -------------------------------------------------------------------------
     const addContributor = () => {
         setContributors([...contributors, ""]);
@@ -193,7 +208,7 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
     };
 
     // -------------------------------------------------------------------------
-    // 4. Validation before submitting update request
+    // 5. Validation before submitting update request
     // -------------------------------------------------------------------------
     const validateForm = () => {
         if (!trackerName.trim()) {
@@ -235,9 +250,8 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
         return true;
     };
 
-
     // -------------------------------------------------------------------------
-    // 5. Handle update submission and send data to database
+    // 6. Handle update submission and send data to database
     // -------------------------------------------------------------------------
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -265,7 +279,8 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
                 goalAmount: goalEnabled ? parseFloat(goalAmount) : null,
                 minDailyAmount: goalEnabled && minAmount ? parseFloat(minAmount) : null,
                 goalDate: goalEnabled && goalDate ? goalDate : null,
-                contributors: contributionEnabled ? contributors.filter(c => c.trim() !== "") : []
+                contributors: contributionEnabled ? contributors.filter(c => c.trim() !== "") : [],
+                wasStreakEnabled // Pass original state to backend
             };
 
             const response = await updateTracker(trackerData);
@@ -297,280 +312,281 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
     }
 
     return (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-50">
-            <div className="relative bg-white p-8 w-[39em] h-[48em] rounded-3xl shadow-lg flex flex-col">
+        <>
+            {/* MAIN EDIT FORM */}
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-50">
+                <div className="relative bg-white p-8 w-[39em] h-[48em] rounded-3xl shadow-lg flex flex-col">
 
-                {/* CLOSE BUTTON */}
-                <a onClick={onClose} className="close-icon absolute top-2 right-5">×</a>
+                    {/* CLOSE BUTTON */}
+                    <a onClick={onClose} className="close-icon absolute top-2 right-5">×</a>
 
-                <h3 className="text-xl font-semibold text-center mb-4">Edit Tracker</h3>
-                
-                {/* ERROR MESSAGE DISPLAY */}
-                {submitError && (
-                    <div className="mb-3 p-3 bg-red-100 border border-red-400 text-red-700 rounded-xl text-sm">
-                        {submitError}
-                    </div>
-                )}
-
-
-                {/* -------------------------------------------------------------
-                    SCROLLABLE FORM SECTION
-                    ------------------------------------------------------------- */}
-                <div className="flex-1 overflow-y-auto p-2">
-                    <form id="edit-tracker-form" onSubmit={handleSubmit}>
-                        <div className="flex flex-row gap-5">
-
-                            {/* -------------------------------------------------
-                                LEFT SIDE: Tracker Info + Streak Settings
-                                ------------------------------------------------- */}
-                            <div className="//Left flex flex-col">
-                                <h5>Tracker Information</h5>
-
-                                {/* TRACKER NAME + DESCRIPTION */}
-                                <div className="flex flex-row gap-5 mb-2">
-                                    <div className="flex flex-col gap-2">
-                                        <label>Tracker Name*</label>
-                                        <input 
-                                            className="w-65 !h-10 !p-4 !rounded-xl" 
-                                            type="text" 
-                                            required 
-                                            value={trackerName}
-                                            onChange={(e) => setTrackerName(e.target.value)}
-                                            disabled={isSubmitting}
-                                        />
-
-                                        <label>Description</label>
-                                        <textarea
-                                            className="w-65 !h-25 !p-4 !rounded-xl bg-[var(--neutral0)] resize-none"
-                                            placeholder="This tracker is for..."
-                                            rows={3}
-                                            value={description}
-                                            onChange={(e) => setDescription(e.target.value)}
-                                            disabled={isSubmitting}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* BANK & INTEREST */}
-                                <div className="flex flex-row gap-5 mb-2">
-                                    <div className="flex flex-col gap-2">
-                                        <label>Bank Name</label>
-                                        <input 
-                                            className="w-65 !h-10 !p-4 !rounded-xl" 
-                                            type="text" 
-                                            value={bankName}
-                                            onChange={(e) => setBankName(e.target.value)}
-                                            disabled={isSubmitting}
-                                        />
-
-                                        <label>Interest Rate</label>
-                                        <input 
-                                            className="w-65 !h-10 !p-4 !rounded-xl" 
-                                            type="number" 
-                                            placeholder="%" 
-                                            value={interestRate}
-                                            onChange={(e) => setInterestRate(e.target.value)}
-                                            disabled={isSubmitting}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* STREAKS */}
-                                <div className="flex flex-row items-center gap-2 mb-2">
-                                    <h5>Tracker Streaks</h5>
-                                    <ToggleSwitch 
-                                        value={streakEnabled} 
-                                        onChange={setStreakEnabled} 
-                                        disabled={isSubmitting}
-                                    />
-                                </div>
-
-                                {/* MINIMUM STREAK AMOUNT */}
-                                <div className="flex flex-col gap-2">
-                                    <label>Minimum Streak Amount</label>
-                                    <input
-                                        className="w-65 !h-10 !p-4 !rounded-xl"
-                                        type="number"
-                                        placeholder="$"
-                                        value={streakMinAmount}
-                                        onChange={(e) => setStreakMinAmount(e.target.value)}
-                                        disabled={!streakEnabled || isSubmitting}
-                                        style={{
-                                            opacity: streakEnabled && !isSubmitting ? 1 : 0.4,
-                                            cursor: streakEnabled && !isSubmitting ? "text" : "not-allowed",
-                                        }}
-                                    />
-                                </div>
-                            </div>
-
-                            {/* -------------------------------------------------
-                                RIGHT SIDE: Goal Calculator + Contributors
-                                ------------------------------------------------- */}
-                            <div className="//Right flex flex-col">
-
-                                {/* GOAL TOGGLE */}
-                                <div className="flex flex-row gap-2">
-                                    <h5>Tracker Goal</h5>
-                                    <ToggleSwitch 
-                                        value={goalEnabled} 
-                                        onChange={setGoalEnabled} 
-                                        disabled={isSubmitting}
-                                    />
-                                </div>
-
-                                {/* GOAL INPUTS */}
-                                <div className="flex flex-col gap-2 mb-3">
-                                    <label>Goal Amount</label>
-                                    <input
-                                        className="w-65 !h-10 !p-4 !rounded-xl"
-                                        type="number"
-                                        placeholder="$"
-                                        disabled={!goalEnabled || isSubmitting}
-                                        style={{
-                                            opacity: goalEnabled && !isSubmitting ? 1 : 0.4,
-                                            cursor: goalEnabled && !isSubmitting ? "text" : "not-allowed",
-                                        }}
-                                        value={goalAmount}
-                                        onChange={(e) => setGoalAmount(e.target.value)}
-                                    />
-
-                                    <label>Enter Commitment</label>
-                                    <div className="flex flex-row gap-3 w-65 items-center">
-
-                                        {/* MINIMUM AMOUNT */}
-                                        <input
-                                            className="w-full !h-10 !p-4 !rounded-xl"
-                                            type="number"
-                                            placeholder="$ Min"
-                                            disabled={!goalEnabled || goalDate !== "" || isSubmitting}
-                                            style={{
-                                                opacity: (!goalEnabled || goalDate || isSubmitting) ? 0.4 : 1,
-                                                cursor: (!goalEnabled || goalDate || isSubmitting) ? "not-allowed" : "text",
-                                            }}
-                                            value={minAmount}
-                                            onChange={(e) => {
-                                                setMinAmount(e.target.value);
-                                                setGoalDate("");
-                                            }}
-                                        />
-
-                                        <h5>or</h5>
-
-                                        {/* DATE INPUT */}
-                                        <input
-                                            className="!w-30 !h-10 !p-4 !rounded-xl !text-xs text-[var(--neutral2)]"
-                                            type="date"
-                                            disabled={!goalEnabled || minAmount !== "" || isSubmitting}
-                                            style={{
-                                                opacity: (!goalEnabled || minAmount || isSubmitting) ? 0.4 : 1,
-                                                cursor: (!goalEnabled || minAmount || isSubmitting) ? "not-allowed" : "text",
-                                            }}
-                                            value={goalDate}
-                                            onChange={(e) => {
-                                                setGoalDate(e.target.value);
-                                                setMinAmount("");
-                                            }}
-                                        />
-                                    </div>
-
-                                    {/* CALCULATION RESULT */}
-                                    <div className="w-65">
-                                        <h5
-                                            className="!text-sm whitespace-normal"
-                                            style={{
-                                                color: isError ? "var(--red3)" : "inherit",
-                                            }}
-                                        >
-                                            Result: {result || " "}
-                                        </h5>
-                                    </div>
-                                </div>
-
-                                {/* CONTRIBUTOR TOGGLE */}
-                                <div className="flex flex-row gap-2 mb-1">
-                                    <h5>Tracker Contributor</h5>
-                                    <ToggleSwitch 
-                                        value={contributionEnabled} 
-                                        onChange={setContributionEnabled}
-                                        disabled={isSubmitting}
-                                    />
-                                </div>
-
-                                {/* CONTRIBUTOR LIST */}
-                                <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hover">
-                                    <div className="flex flex-col w-full h-65 pl-2 my-3 gap-1">
-
-                                        <label>Enter Usernames</label>
-
-                                        <ul className="flex flex-col gap-1">
-                                            {contributors.map((contributor, index) => (
-                                                <div key={index} className="flex flex-row items-center gap-2">
-
-                                                    {/* USERNAME FIELD */}
-                                                    <input
-                                                        className="w-[85%] !h-10 !p-4 !rounded-xl"
-                                                        type="text"
-                                                        placeholder="@"
-                                                        disabled={!contributionEnabled || isSubmitting}
-                                                        style={{
-                                                            opacity: contributionEnabled && !isSubmitting ? 1 : 0.4,
-                                                            cursor: contributionEnabled && !isSubmitting ? "text" : "not-allowed",
-                                                        }}
-                                                        value={contributor}
-                                                        onChange={(e) => updateContributor(index, e.target.value)}
-                                                    />
-
-                                                    {/* REMOVE BUTTON */}
-                                                    <a
-                                                        className="close-icon !text-2xl !text-[var(--neutral2)]"
-                                                        onClick={() =>
-                                                            contributionEnabled && !isSubmitting && removeContributor(index)
-                                                        }
-                                                        style={{
-                                                            cursor: contributionEnabled && !isSubmitting ? "pointer" : "not-allowed",
-                                                            opacity: contributionEnabled && !isSubmitting ? 1 : 0.4,
-                                                        }}
-                                                    >
-                                                        ×
-                                                    </a>
-                                                </div>
-                                            ))}
-                                        </ul>
-
-                                        {/* ADD MORE BUTTON */}
-                                        <a
-                                            className="!text-[var(--neutral2)]"
-                                            onClick={contributionEnabled && !isSubmitting ? addContributor : undefined}
-                                            style={{
-                                                cursor: contributionEnabled && !isSubmitting ? "pointer" : "not-allowed",
-                                                opacity: contributionEnabled && !isSubmitting ? 1 : 0.4,
-                                            }}
-                                        >
-                                            add more
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
+                    <h3 className="text-xl font-semibold text-center mb-4">Edit Tracker</h3>
+                    
+                    {/* ERROR MESSAGE DISPLAY */}
+                    {submitError && (
+                        <div className="mb-3 p-3 bg-red-100 border border-red-400 text-red-700 rounded-xl text-sm">
+                            {submitError}
                         </div>
-                    </form>
-                </div>
+                    )}
 
-                {/* -------------------------------------------------------------
-                    SAVE BUTTON
-                    ------------------------------------------------------------- */}
-                <button
-                    onClick={handleSubmit}
-                    disabled={isSubmitting}
-                    className="mt-4 w-full py-3 bg-[var(--green0)] text-white rounded-xl btn-3D"
-                    style={{
-                        cursor: isSubmitting ? "not-allowed" : "pointer",
-                        opacity: isSubmitting ? 0.6 : 1
-                    }}
-                >
-                    {isSubmitting ? "Saving Changes..." : "Edit Tracker"}
-                </button>
+                    {/* STREAK WARNING MESSAGE */}
+                    {streakWarning && (
+                        <div className="mb-3 p-3 bg-yellow-100 border border-yellow-400 text-yellow-800 rounded-xl text-sm">
+                            {streakWarning}
+                        </div>
+                    )}
+
+                    {/* SCROLLABLE FORM SECTION */}
+                    <div className="flex-1 overflow-y-auto overflow-x-hidden p-2">
+                        <form id="edit-tracker-form" onSubmit={handleSubmit}>
+                            <div className="flex flex-row gap-5">
+
+                                {/* LEFT SIDE: Tracker Info + Streak Settings */}
+                                <div className="//Left flex flex-col">
+                                    <h5>Tracker Information</h5>
+
+                                    {/* TRACKER NAME + DESCRIPTION */}
+                                    <div className="flex flex-row gap-5 mb-2">
+                                        <div className="flex flex-col gap-2">
+                                            <label>Tracker Name*</label>
+                                            <input 
+                                                className="w-65 !h-10 !p-4 !rounded-xl" 
+                                                type="text" 
+                                                required 
+                                                value={trackerName}
+                                                onChange={(e) => setTrackerName(e.target.value)}
+                                                disabled={isSubmitting}
+                                            />
+
+                                            <label>Description</label>
+                                            <textarea
+                                                className="w-65 !h-25 !p-4 !rounded-xl bg-[var(--neutral0)] resize-none"
+                                                placeholder="This tracker is for..."
+                                                rows={3}
+                                                value={description}
+                                                onChange={(e) => setDescription(e.target.value)}
+                                                disabled={isSubmitting}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* BANK & INTEREST */}
+                                    <div className="flex flex-row gap-5 mb-2">
+                                        <div className="flex flex-col gap-2">
+                                            <label>Bank Name</label>
+                                            <input 
+                                                className="w-65 !h-10 !p-4 !rounded-xl" 
+                                                type="text" 
+                                                value={bankName}
+                                                onChange={(e) => setBankName(e.target.value)}
+                                                disabled={isSubmitting}
+                                            />
+
+                                            <label>Interest Rate</label>
+                                            <input 
+                                                className="w-65 !h-10 !p-4 !rounded-xl" 
+                                                type="number" 
+                                                placeholder="%" 
+                                                value={interestRate}
+                                                onChange={(e) => setInterestRate(e.target.value)}
+                                                disabled={isSubmitting}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* STREAKS */}
+                                    <div className="flex flex-row items-center gap-2 mb-2">
+                                        <h5>Tracker Streaks</h5>
+                                        <ToggleSwitch 
+                                            value={streakEnabled} 
+                                            onChange={handleStreakToggle}
+                                            disabled={isSubmitting}
+                                        />
+                                    </div>
+
+                                    {/* MINIMUM STREAK AMOUNT */}
+                                    <div className="flex flex-col gap-2">
+                                        <label>Minimum Streak Amount</label>
+                                        <input
+                                            className="w-65 !h-10 !p-4 !rounded-xl"
+                                            type="number"
+                                            placeholder="$"
+                                            value={streakMinAmount}
+                                            onChange={(e) => setStreakMinAmount(e.target.value)}
+                                            disabled={!streakEnabled || isSubmitting}
+                                            style={{
+                                                opacity: streakEnabled && !isSubmitting ? 1 : 0.4,
+                                                cursor: streakEnabled && !isSubmitting ? "text" : "not-allowed",
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* RIGHT SIDE: Goal Calculator + Contributors */}
+                                <div className="//Right flex flex-col">
+
+                                    {/* GOAL TOGGLE */}
+                                    <div className="flex flex-row gap-2">
+                                        <h5>Tracker Goal</h5>
+                                        <ToggleSwitch 
+                                            value={goalEnabled} 
+                                            onChange={setGoalEnabled} 
+                                            disabled={isSubmitting}
+                                        />
+                                    </div>
+
+                                    {/* GOAL INPUTS */}
+                                    <div className="flex flex-col gap-2 mb-3">
+                                        <label>Goal Amount</label>
+                                        <input
+                                            className="w-65 !h-10 !p-4 !rounded-xl"
+                                            type="number"
+                                            placeholder="$"
+                                            disabled={!goalEnabled || isSubmitting}
+                                            style={{
+                                                opacity: goalEnabled && !isSubmitting ? 1 : 0.4,
+                                                cursor: goalEnabled && !isSubmitting ? "text" : "not-allowed",
+                                            }}
+                                            value={goalAmount}
+                                            onChange={(e) => setGoalAmount(e.target.value)}
+                                        />
+
+                                        <label>Enter Commitment</label>
+                                        <div className="flex flex-row gap-3 w-65 items-center">
+
+                                            {/* MINIMUM AMOUNT */}
+                                            <input
+                                                className="w-full !h-10 !p-4 !rounded-xl"
+                                                type="number"
+                                                placeholder="$ Min"
+                                                disabled={!goalEnabled || goalDate !== "" || isSubmitting}
+                                                style={{
+                                                    opacity: (!goalEnabled || goalDate || isSubmitting) ? 0.4 : 1,
+                                                    cursor: (!goalEnabled || goalDate || isSubmitting) ? "not-allowed" : "text",
+                                                }}
+                                                value={minAmount}
+                                                onChange={(e) => {
+                                                    setMinAmount(e.target.value);
+                                                    setGoalDate("");
+                                                }}
+                                            />
+
+                                            <h5>or</h5>
+
+                                            {/* DATE INPUT */}
+                                            <input
+                                                className="!w-30 !h-10 !p-4 !rounded-xl !text-xs text-[var(--neutral2)]"
+                                                type="date"
+                                                disabled={!goalEnabled || minAmount !== "" || isSubmitting}
+                                                style={{
+                                                    opacity: (!goalEnabled || minAmount || isSubmitting) ? 0.4 : 1,
+                                                    cursor: (!goalEnabled || minAmount || isSubmitting) ? "not-allowed" : "text",
+                                                }}
+                                                value={goalDate}
+                                                onChange={(e) => {
+                                                    setGoalDate(e.target.value);
+                                                    setMinAmount("");
+                                                }}
+                                            />
+                                        </div>
+
+                                        {/* CALCULATION RESULT */}
+                                        <div className="w-65">
+                                            <h5
+                                                className="!text-sm whitespace-normal"
+                                                style={{
+                                                    color: isError ? "var(--red3)" : "inherit",
+                                                }}
+                                            >
+                                                Result: {result || " "}
+                                            </h5>
+                                        </div>
+                                    </div>
+
+                                    {/* CONTRIBUTOR TOGGLE */}
+                                    <div className="flex flex-row gap-2 mb-1">
+                                        <h5>Tracker Contributor</h5>
+                                        <ToggleSwitch 
+                                            value={contributionEnabled} 
+                                            onChange={setContributionEnabled}
+                                            disabled={isSubmitting}
+                                        />
+                                    </div>
+
+                                    {/* CONTRIBUTOR LIST */}
+                                    <div className="flex flex-col gap-2 overflow-y-auto scrollbar-hover">
+                                        <div className="flex flex-col w-full h-65 pl-2 my-3 gap-1">
+
+                                            <label>Enter Usernames</label>
+
+                                            <ul className="flex flex-col gap-1">
+                                                {contributors.map((contributor, index) => (
+                                                    <div key={index} className="flex flex-row items-center gap-2">
+
+                                                        {/* USERNAME FIELD */}
+                                                        <input
+                                                            className="w-[85%] !h-10 !p-4 !rounded-xl"
+                                                            type="text"
+                                                            placeholder="@"
+                                                            disabled={!contributionEnabled || isSubmitting}
+                                                            style={{
+                                                                opacity: contributionEnabled && !isSubmitting ? 1 : 0.4,
+                                                                cursor: contributionEnabled && !isSubmitting ? "text" : "not-allowed",
+                                                            }}
+                                                            value={contributor}
+                                                            onChange={(e) => updateContributor(index, e.target.value)}
+                                                        />
+
+                                                        {/* REMOVE BUTTON */}
+                                                        <a
+                                                            className="close-icon !text-2xl !text-[var(--neutral2)]"
+                                                            onClick={() =>
+                                                                contributionEnabled && !isSubmitting && removeContributor(index)
+                                                            }
+                                                            style={{
+                                                                cursor: contributionEnabled && !isSubmitting ? "pointer" : "not-allowed",
+                                                                opacity: contributionEnabled && !isSubmitting ? 1 : 0.4,
+                                                            }}
+                                                        >
+                                                            ×
+                                                        </a>
+                                                    </div>
+                                                ))}
+                                            </ul>
+
+                                            {/* ADD MORE BUTTON */}
+                                            <a
+                                                className="!text-[var(--neutral2)]"
+                                                onClick={contributionEnabled && !isSubmitting ? addContributor : undefined}
+                                                style={{
+                                                    cursor: contributionEnabled && !isSubmitting ? "pointer" : "not-allowed",
+                                                    opacity: contributionEnabled && !isSubmitting ? 1 : 0.4,
+                                                }}
+                                            >
+                                                add more
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+
+                    {/* SAVE BUTTON */}
+                    <button
+                        onClick={handleSubmit}
+                        disabled={isSubmitting}
+                        className="mt-4 w-full py-3 bg-[var(--green0)] text-white rounded-xl btn-3D"
+                        style={{
+                            cursor: isSubmitting ? "not-allowed" : "pointer",
+                            opacity: isSubmitting ? 0.6 : 1
+                        }}
+                    >
+                        {isSubmitting ? "Saving Changes..." : "Edit Tracker"}
+                    </button>
+                </div>
             </div>
-        </div>
+        </>
     );
 }
 

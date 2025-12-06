@@ -329,7 +329,8 @@ export async function updateTracker({
     goalAmount,
     minDailyAmount,
     goalDate,
-    contributors // Full list of *new* usernames
+    contributors,
+    wasStreakEnabled // NEW: Flag to know if streaks were previously enabled
 }) {
     try {
         if (!trackerId) {
@@ -342,7 +343,7 @@ export async function updateTracker({
             throw new Error("User session expired. Please log in again.");
         }
         
-        // --- 1. OWNER CHECK (NEW LOGIC) --------------------------------
+        // --- 1. OWNER CHECK --------------------------------
         const { data: trackerDataCheck, error: checkError } = await supabase
             .from("trackers")
             .select("owner_id")
@@ -354,12 +355,19 @@ export async function updateTracker({
         }
         
         if (trackerDataCheck.owner_id !== currentUserId) {
-            // CRITICAL: Block the operation if user is not the owner
             throw new Error("Permission Denied: Only the owner can edit this tracker.");
         }
-        // --------------------------------------------------------------
 
-        // Fetch owner's profile to get their username (needed for manageTrackerContributors)
+        // --- 2. DELETE STREAK DATA IF DISABLING STREAKS ---
+        if (wasStreakEnabled && !streakEnabled) {
+            console.log("Streaks disabled - deleting streak data...");
+            const deleteResult = await deleteTrackerStreakData(trackerId);
+            if (!deleteResult.success) {
+                throw new Error("Failed to delete streak data: " + deleteResult.error);
+            }
+        }
+
+        // Fetch owner's profile to get their username
         const { data: ownerProfile, error: ownerProfileError } = await getUserProfile(currentUserId);
         if (ownerProfileError || !ownerProfile || !ownerProfile.username) {
             throw new Error("Could not fetch owner profile or username.");
@@ -367,19 +375,16 @@ export async function updateTracker({
 
         console.log("Updating tracker with ID:", trackerId);
 
-        // -----------------------------------------
-        // 2. UPDATE TRACKERS TABLE 
-        // -----------------------------------------
+        // --- 3. UPDATE TRACKERS TABLE ---
         const { data: trackerData, error: trackerErr } = await supabase
             .from("trackers")
             .update({
-                // ... (existing update object)
                 tracker_name: trackerName,
                 description,
                 bank_name: bankName,
                 interest_rate: interestRate,
                 streak_enabled: streakEnabled,
-                streak_min_amount: streakMinAmount,
+                streak_min_amount: streakEnabled ? streakMinAmount : null,
                 goal_enabled: goalEnabled,
                 goal_amount: goalAmount,
                 min_daily_amount: minDailyAmount,
@@ -391,11 +396,7 @@ export async function updateTracker({
 
         if (trackerErr) throw trackerErr;
         
-        // -----------------------------------------
-        // 3. MANAGE CONTRIBUTORS 
-        // -----------------------------------------
-        // This is still called because only the owner can update the tracker's fields,
-        // and updating the fields also means updating the contributors list.
+        // --- 4. MANAGE CONTRIBUTORS ---
         await manageTrackerContributors(
             trackerId,
             currentUserId,
@@ -851,6 +852,50 @@ export async function getTodayStreakStatus(trackerId) {
 
     } catch (err) {
         console.error("Get streak status error:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+// -----------------------------------------------------------------------------
+// DELETE STREAK DATA FOR A TRACKER
+// Called when disabling streaks on a tracker
+// -----------------------------------------------------------------------------
+export async function deleteTrackerStreakData(trackerId) {
+    try {
+        if (!trackerId) {
+            return { success: false, error: "Tracker ID is required" };
+        }
+
+        // Delete all streak logs for this tracker
+        const { error: logsError } = await supabase
+            .from("streak_logs")
+            .delete()
+            .eq("tracker_id", trackerId);
+
+        if (logsError) {
+            console.error("Error deleting streak logs:", logsError);
+            return { success: false, error: logsError.message };
+        }
+
+        // Reset streak-related fields in the tracker
+        const { error: trackerError } = await supabase
+            .from("trackers")
+            .update({
+                streak_days: 0,
+                last_streak_check: null
+            })
+            .eq("id", trackerId);
+
+        if (trackerError) {
+            console.error("Error resetting tracker streak fields:", trackerError);
+            return { success: false, error: trackerError.message };
+        }
+
+        console.log("Streak data deleted successfully for tracker:", trackerId);
+        return { success: true };
+
+    } catch (err) {
+        console.error("Delete streak data error:", err);
         return { success: false, error: err.message };
     }
 }
