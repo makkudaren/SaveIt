@@ -27,7 +27,8 @@ import {
     getCurrentUser, 
     getUserProfile, 
     getUserTrackers, 
-    getUserStreakStats 
+    getUserStreakStats,
+    getTodayStreakStatus 
 } from "../services/DatabaseControl";
 
 function DashboardPage() {
@@ -39,9 +40,10 @@ function DashboardPage() {
     const [trackers, setTrackers] = useState([]);      // All trackers owned by the user
     const [streak, setStreak] = useState(null);        // Streak statistics
     const [loading, setLoading] = useState(true);       // Global loading indicator
-
+    
     // Incrementing this key forces a data refresh
     const [dashboardUpdateKey, setDashboardUpdateKey] = useState(0);
+    const [trackerStreakStatuses, setTrackerStreakStatuses] = useState({});
 
     // -------------------------------------------------------------------------
     // INITIAL + REFRESH DATA FETCH
@@ -71,18 +73,49 @@ function DashboardPage() {
             setTrackers(trackersResult.data || []);
             setStreak(streakResult.data);
             setLoading(false);
+
+            // Fetch streak statuses for all trackers with streak enabled
+            if (trackersResult.data.length > 0) {
+                trackersResult.data.forEach(tracker => {
+                    if (tracker.streak_enabled) {
+                        fetchStreakStatus(tracker.id);
+                    }
+                });
+            }
         }
 
         loadDashboard();
     }, [dashboardUpdateKey]);
+
+    // -----------------------------------------------------------------------------
+    // Function to fetch and update streak status for a specific tracker
+    // -----------------------------------------------------------------------------
+    const fetchStreakStatus = async (trackerId) => {
+        const result = await getTodayStreakStatus(trackerId);
+        if (result.success) {
+            setTrackerStreakStatuses(prev => ({
+                ...prev,
+                [trackerId]: result.isActive
+            }));
+        }
+    };
 
     // -------------------------------------------------------------------------
     // TRACKER UPDATE HANDLER
     // Triggered when TrackerCard reports an update or delete event.
     // Causes full dashboard refresh.
     // -------------------------------------------------------------------------
-    const handleTrackerUpdate = (changeInfo) => {
+    const handleTrackerUpdate = async (changeInfo) => {
         console.log("Dashboard tracker update:", changeInfo);
+        
+        // Refresh streak status after transaction
+        if (changeInfo.action === "update" && changeInfo.trackerId) {
+            const tracker = trackers.find(t => t.id === changeInfo.trackerId);
+            if (tracker?.streak_enabled) {
+                await fetchStreakStatus(changeInfo.trackerId);
+            }
+        }
+        
         setDashboardUpdateKey(prev => prev + 1);
     };
 
@@ -226,6 +259,7 @@ function DashboardPage() {
                                                 tracker={t}
                                                 isDashboardContext={true}
                                                 onTrackerUpdated={handleTrackerUpdate}
+                                                isTodayStreakActive={trackerStreakStatuses[t.id] || false}
                                             />
                                         ))
                                     ) : (

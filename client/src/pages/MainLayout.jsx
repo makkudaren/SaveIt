@@ -57,7 +57,10 @@ function MainLayout() {
             <Header />
 
             {/* OUTLET → Loads child pages dynamically */}
-            <Outlet />
+            
+              <Outlet />
+            
+            
         </div>
 
     </div>

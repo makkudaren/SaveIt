@@ -19,7 +19,7 @@ import Modal from "./Modal";
 import { deleteTracker, getCurrentUserId, getTrackerTransactions } from "../services/DatabaseControl";
 import { useState, useEffect} from "react";
 
-function Tracker({ tracker, onTrackerChange }) {
+function Tracker({ tracker, onTrackerChange, isTodayStreakActive  }) {
     // --- RENDER NULL STATE ---
     if (!tracker) {
         return (
@@ -80,7 +80,7 @@ function Tracker({ tracker, onTrackerChange }) {
     const [showTransactionModal, setShowTransactionModal] = useState(false);
     const [showTransactionHistory, setShowTransactionHistory] = useState(false);
 
-    // NEW STATE: For Recent Activity Section
+    // Recent Activity Section
     const [recentTransactions, setRecentTransactions] = useState([]);
     const [isRecentLoading, setIsRecentLoading] = useState(true);
     
@@ -412,19 +412,16 @@ function Tracker({ tracker, onTrackerChange }) {
                         {/* STREAK DAYS (Now uses invisible) */}
                         <div className={`flex items-center gap-2 ${streakFeatureClass}`}>
                             <img
-                                src={streakActive ? streakOnIcon : streakOffIcon}
+                                src={isTodayStreakActive ? streakOnIcon : streakOffIcon}
                                 className="w-6 h-6"
                             />
                             <h5
-                                className={`${
-                                        streakActive
-                                            ? "text-[var(--green3)]"
-                                            : "text-[var(--neutral3)]"
-                                    }`}
+                                className={isTodayStreakActive ? "text-[var(--green3)]" : "text-[var(--neutral3)]"}
                             >
                                 {streak} days
                             </h5>
                         </div>
+                        
                         
                         {/* STREAK MINIMUM (Now uses invisible and was missing the class) */}
                         <div className={`flex items-center gap-2 text-[var(--neutral3)] ${streakFeatureClass}`}>

@@ -564,7 +564,13 @@ export async function processTrackerTransaction({ trackerId, type, amount, note 
         }
 
         console.log(`Transaction successful (Type: ${type}, ID: ${data.id})`);
-        return { success: true, transaction: data };
+
+        let streakResult = null;
+        if (type === 'deposit') {
+            streakResult = await activateStreak(trackerId, amount);
+        }
+
+        return { success: true, transaction: data, streakResult: streakResult};
 
     } catch (err) {
         console.error("Frontend Transaction processing error:", err.message);
@@ -594,3 +600,259 @@ export async function getTrackerTransactions(trackerId, limit = 100) {
         .order("created_at", { ascending: false }) // Newest transactions first
         .limit(limit);
 }
+
+// -----------------------------------------------------------------------------
+// STREAK MANAGEMENT FUNCTIONS
+// -----------------------------------------------------------------------------
+
+// -----------------------------------------------------------------------------
+// CHECK AND UPDATE STREAK STATUS
+// This should be called when loading a tracker or after a deposit
+// -----------------------------------------------------------------------------
+export async function checkAndUpdateStreak(trackerId) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) {
+            return { success: false, error: "No user logged in" };
+        }
+
+        // Get tracker details
+        const { data: tracker, error: trackerError } = await supabase
+            .from("trackers")
+            .select("*")
+            .eq("id", trackerId)
+            .single();
+
+        if (trackerError || !tracker) {
+            return { success: false, error: "Tracker not found" };
+        }
+
+        // Only proceed if streak is enabled
+        if (!tracker.streak_enabled) {
+            return { success: true, streakActive: false, streakDays: 0 };
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = today.toISOString().split('T')[0];
+
+        // Check if streak was already activated today
+        const { data: todayLog, error: logError } = await supabase
+            .from("streak_logs")
+            .select("*")
+            .eq("tracker_id", trackerId)
+            .eq("user_id", userId)
+            .eq("date", todayStr)
+            .maybeSingle();
+
+        if (logError && logError.code !== 'PGRST116') { // PGRST116 = no rows
+            console.error("Error checking today's streak log:", logError);
+        }
+
+        const isTodayActive = todayLog?.is_active || false;
+
+        // Check yesterday's status to determine if streak continues
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+        const { data: yesterdayLog } = await supabase
+            .from("streak_logs")
+            .select("is_active")
+            .eq("tracker_id", trackerId)
+            .eq("user_id", userId)
+            .eq("date", yesterdayStr)
+            .maybeSingle();
+
+        let newStreakDays = tracker.streak_days || 0;
+
+        // Streak logic:
+        // - If today is active and yesterday was active: increment
+        // - If today is active and yesterday was not active: reset to 1
+        // - If today is not active and yesterday was active: check if it's past midnight (reset to 0)
+        // - If today is not active and yesterday was not active: keep at 0
+        
+        if (isTodayActive) {
+            if (yesterdayLog?.is_active) {
+                // Continue streak - only increment if not already incremented today
+                if (tracker.last_streak_check !== todayStr) {
+                    newStreakDays = (tracker.streak_days || 0) + 1;
+                }
+            } else {
+                // Start new streak
+                newStreakDays = 1;
+            }
+        } else {
+            // Today not active yet
+            if (yesterdayLog?.is_active === false || !yesterdayLog) {
+                // Yesterday was also inactive or doesn't exist
+                newStreakDays = 0;
+            } else if (yesterdayLog?.is_active) {
+                // Yesterday was active but today isn't yet
+                // Check if we've passed midnight (streak at risk)
+                const lastCheck = tracker.last_streak_check;
+                if (lastCheck && lastCheck !== todayStr) {
+                    // It's a new day and streak hasn't been activated - reset
+                    newStreakDays = 0;
+                }
+            }
+        }
+
+        // Update tracker with new streak count and last check date
+        const { error: updateError } = await supabase
+            .from("trackers")
+            .update({
+                streak_days: newStreakDays,
+                last_streak_check: todayStr
+            })
+            .eq("id", trackerId);
+
+        if (updateError) {
+            console.error("Error updating streak:", updateError);
+            return { success: false, error: updateError.message };
+        }
+
+        return {
+            success: true,
+            streakActive: isTodayActive,
+            streakDays: newStreakDays,
+            todayLog: todayLog
+        };
+
+    } catch (err) {
+        console.error("Streak check error:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+// -----------------------------------------------------------------------------
+// ACTIVATE STREAK (Called after a deposit meets minimum requirement)
+// -----------------------------------------------------------------------------
+export async function activateStreak(trackerId, depositAmount) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) {
+            return { success: false, error: "No user logged in" };
+        }
+
+        // Get tracker details
+        const { data: tracker, error: trackerError } = await supabase
+            .from("trackers")
+            .select("streak_enabled, streak_min_amount")
+            .eq("id", trackerId)
+            .single();
+
+        if (trackerError || !tracker) {
+            return { success: false, error: "Tracker not found" };
+        }
+
+        if (!tracker.streak_enabled) {
+            return { success: false, error: "Streak not enabled for this tracker" };
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = today.toISOString().split('T')[0];
+
+        // Check if already activated today
+        const { data: existingLog } = await supabase
+            .from("streak_logs")
+            .select("*")
+            .eq("tracker_id", trackerId)
+            .eq("user_id", userId)
+            .eq("date", todayStr)
+            .maybeSingle();
+
+        if (existingLog?.is_active) {
+            return { 
+                success: true, 
+                alreadyActive: true,
+                message: "Streak already activated today" 
+            };
+        }
+
+        // Calculate total deposited today (including this deposit)
+        const totalToday = (existingLog?.amount_deposited || 0) + depositAmount;
+
+        // Check if minimum is met
+        const minAmount = tracker.streak_min_amount || 0;
+        const meetsMinimum = totalToday >= minAmount;
+
+        // Upsert the streak log
+        const { error: logError } = await supabase
+            .from("streak_logs")
+            .upsert({
+                tracker_id: trackerId,
+                user_id: userId,
+                date: todayStr,
+                amount_deposited: totalToday,
+                is_active: meetsMinimum,
+                activated_at: meetsMinimum ? new Date().toISOString() : null
+            }, {
+                onConflict: 'tracker_id,user_id,date'
+            });
+
+        if (logError) {
+            console.error("Error updating streak log:", logError);
+            return { success: false, error: logError.message };
+        }
+
+        // Now update the tracker's streak count
+        await checkAndUpdateStreak(trackerId);
+
+        return {
+            success: true,
+            streakActivated: meetsMinimum,
+            totalToday: totalToday,
+            minimumRequired: minAmount,
+            message: meetsMinimum 
+                ? "Streak activated for today!" 
+                : `Deposited $${totalToday.toFixed(2)} of $${minAmount.toFixed(2)} required`
+        };
+
+    } catch (err) {
+        console.error("Activate streak error:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+// -----------------------------------------------------------------------------
+// GET TODAY'S STREAK STATUS
+// -----------------------------------------------------------------------------
+export async function getTodayStreakStatus(trackerId) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) {
+            return { success: false, error: "No user logged in" };
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayStr = today.toISOString().split('T')[0];
+
+        const { data, error } = await supabase
+            .from("streak_logs")
+            .select("*")
+            .eq("tracker_id", trackerId)
+            .eq("user_id", userId)
+            .eq("date", todayStr)
+            .maybeSingle();
+
+        if (error && error.code !== 'PGRST116') {
+            return { success: false, error: error.message };
+        }
+
+        return {
+            success: true,
+            isActive: data?.is_active || false,
+            amountDeposited: data?.amount_deposited || 0,
+            activatedAt: data?.activated_at
+        };
+
+    } catch (err) {
+        console.error("Get streak status error:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+

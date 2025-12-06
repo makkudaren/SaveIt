@@ -35,7 +35,7 @@ import SearchIcon from "../assets/icons/search-outline.svg?react";
 import CalculatorIcon from "../assets/icons/calculator-filled.svg?react";
 
 // Database Services
-import { getUserTrackers, getCurrentUser } from "../services/DatabaseControl";
+import { getUserTrackers, getCurrentUser, getTodayStreakStatus  } from "../services/DatabaseControl";
 
 
 // -----------------------------------------------------------------------------
@@ -50,6 +50,7 @@ function TrackersPage() {
     // Trackers and selection states
     const [trackers, setTrackers] = useState([]);
     const [selectedTracker, setSelectedTracker] = useState(null);
+    const [trackerStreakStatuses, setTrackerStreakStatuses] = useState({});
 
     // Loading state
     const [loading, setLoading] = useState(true);
@@ -60,6 +61,7 @@ function TrackersPage() {
     // Retrieve navigation-based tracker selection (optional)
     const location = useLocation();
     const selectedTrackerId = location.state?.selectedTrackerId;
+    
 
 
     // -----------------------------------------------------------------------------
@@ -87,7 +89,7 @@ function TrackersPage() {
             if (error) {
                 console.error("Error fetching trackers:", error);
                 setTrackers([]);
-            } else {
+            }else {
                 setTrackers(data || []);
 
                 // HANDLE SELECTION CORRECTION
@@ -108,12 +110,32 @@ function TrackersPage() {
                 }
             }
 
+            if (data && data.length > 0) {
+                data.forEach(tracker => {
+                    if (tracker.streak_enabled) {
+                        fetchStreakStatus(tracker.id);
+                    }
+                });
+            }            
+
             setLoading(false);
         }
 
         fetchTrackers();
     }, [trackerUpdateKey]); // Re-fetch on update
 
+    // -----------------------------------------------------------------------------
+    // Function to fetch and update streak status for a specific tracker
+    // -----------------------------------------------------------------------------
+    const fetchStreakStatus = async (trackerId) => {
+        const result = await getTodayStreakStatus(trackerId);
+        if (result.success) {
+            setTrackerStreakStatuses(prev => ({
+                ...prev,
+                [trackerId]: result.isActive
+            }));
+        }
+    };
 
     // -----------------------------------------------------------------------------
     // HANDLERS
@@ -125,8 +147,17 @@ function TrackersPage() {
     };
 
     // Called whenever TrackerCard or Tracker reports a change
-    const handleTrackerChange = (changeInfo) => {
+    const handleTrackerChange = async (changeInfo) => {
         console.log("Tracker updated:", changeInfo);
+        
+        // Refresh streak status after transaction
+        if (changeInfo.action === "update" && changeInfo.trackerId) {
+            const tracker = trackers.find(t => t.id === changeInfo.trackerId);
+            if (tracker?.streak_enabled) {
+                await fetchStreakStatus(changeInfo.trackerId);
+            }
+        }
+        
         setTrackerUpdateKey(prev => prev + 1); // Force re-fetch
     };
 
@@ -348,6 +379,7 @@ function TrackersPage() {
                         <Tracker 
                             tracker={selectedTracker}
                             onTrackerChange={handleTrackerChange}
+                            isTodayStreakActive={trackerStreakStatuses[selectedTracker?.id] || false}
                         />)
                     }
                     
@@ -399,7 +431,7 @@ function TrackersPage() {
 
                     {/* TRACKER CARD GRID ------------------------------------------- */}
                     <div className={`w-full h-110 ${loading ? 'overflow-y-hidden' : 'overflow-y-auto'} overflow-x-hidden scrollbar-hover scroll-smooth`}>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1">
+                        <div className="grid grid-cols-4 //sm:grid-cols-2 //lg:grid-cols-4 gap-1">
                             {loading ? (
                                     <>
                                         <SkeletonTrackerCard /><SkeletonTrackerCard /><SkeletonTrackerCard /><SkeletonTrackerCard />
@@ -415,6 +447,7 @@ function TrackersPage() {
                                                     tracker={t}
                                                     onCardClick={handleTrackerSelect}
                                                     onTrackerUpdated={handleTrackerChange}
+                                                    isTodayStreakActive={trackerStreakStatuses[t.id] || false}
                                                 />
                                             ))
                                         ) : (

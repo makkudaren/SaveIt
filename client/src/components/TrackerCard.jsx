@@ -19,7 +19,7 @@ import EditTrackerForm from "./EditTrackerForm";
 import { deleteTracker, getCurrentUserId } from "../services/DatabaseControl";
 
 // NEW PROP: isDashboardContext → suppresses main click for dashboard widgets.
-function TrackerCard({ tracker, onCardClick, onTrackerUpdated, isDashboardContext = false }) {
+function TrackerCard({ tracker, onCardClick, onTrackerUpdated, isTodayStreakActive, isDashboardContext = false }) {
 
     const navigate = useNavigate();
 
@@ -271,10 +271,10 @@ function TrackerCard({ tracker, onCardClick, onTrackerUpdated, isDashboardContex
                     {/* STREAK DISPLAY */}
                     <h5 className={`text-[var(--green3)] flex items-center gap-2 ${streakClass}`}>
                         <img
-                            src={streakActive ? StreakOnIcon : StreakOffIcon}
+                            src={isTodayStreakActive ? StreakOnIcon : StreakOffIcon}
                             className="w-6 h-6"
                         />
-                        <span className={streakActive ? "text-[var(--green3)]" : "text-[var(--neutral2)]"}>
+                        <span className={isTodayStreakActive ? "text-[var(--green3)]" : "text-[var(--neutral3)]"}>
                             {streakDays} days
                         </span>
                     </h5>

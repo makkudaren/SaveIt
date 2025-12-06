@@ -123,7 +123,7 @@ function GoalCalculator({ show, onClose }) {
 
     return (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex justify-center items-center z-50">
-            <div className="relative bg-[var(--green1)] p-8 w-auto h-auto rounded-3xl shadow-lg flex flex-col">
+            <div className="relative bg-[var(--green0)] p-8 w-auto h-auto rounded-3xl shadow-lg flex flex-col">
 
                 {/* -----------------------------------------------------------------
                    CLOSE BUTTON
@@ -157,7 +157,7 @@ function GoalCalculator({ show, onClose }) {
                                 RESULT BOX
                                 Shows dynamic output depending on user calculation.
                                 ------------------------------------------------------------- */}
-                            <div className="bg-[var(--green0)] h-20 w-80 rounded-xl shadow-[inset_0_4px_8px_rgba(0,0,0,0.2)] flex items-center p-5">
+                            <div className="bg-[var(--green0)] h-20 w-80 rounded-xl shadow-[inset_0_2px_5px_rgba(0,0,0,0.3)] flex items-center p-5">
                                 <h5
                                     className="!text-lg"
                                     style={{ color: isError ? "var(--red3)" : "var(--neutral2)" }}

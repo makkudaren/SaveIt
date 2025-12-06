@@ -3,7 +3,7 @@
 // Reusable Loading Component
 const Loading = ({ text = "Loading..." }) => {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
+    <div className="flex flex-col items-center justify-center min-h-full">
       {/* Spinner */}
       <div className="w-16 h-16 border-4 border-transparent border-t-[var(--green3)] rounded-full animate-spin"></div>
 
