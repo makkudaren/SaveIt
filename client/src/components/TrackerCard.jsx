@@ -265,7 +265,7 @@ function TrackerCard({ tracker, onCardClick, onTrackerUpdated, isTodayStreakActi
                     {/* -----------------------------------------------------------------
                         TRACKER CONTENT DISPLAY
                     ----------------------------------------------------------------- */}
-                    <h5>{bankName}</h5>
+                    <h5 className="truncate pr-10">{bankName}</h5>
                     <h2 className="mt-3">${formatBalance(balance)}</h2>
 
                     {/* STREAK DISPLAY */}
@@ -275,7 +275,7 @@ function TrackerCard({ tracker, onCardClick, onTrackerUpdated, isTodayStreakActi
                             className="w-6 h-6"
                         />
                         <span className={isTodayStreakActive ? "text-[var(--green3)]" : "text-[var(--neutral3)]"}>
-                            {streakDays} days
+                            {streakDays} {streakDays === 1 ? 'day' : 'days'}
                         </span>
                     </h5>
 

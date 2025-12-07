@@ -230,7 +230,9 @@ export async function getUserStreakStats(userId = null) {
         .from("streaks")
         .select("*")
         .eq("user_id", targetUserId)
-        .single();
+        .order("highest_streak_days", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 }
 
 
@@ -251,14 +253,12 @@ export async function createTracker({
     contributors
 }) {
     try {
-        // Get current user ID from Supabase session
         const userId = await getCurrentUserId();
         
         if (!userId) {
             throw new Error("No user is currently logged in. Please log in first.");
         }
 
-        // Fetch owner's profile to get their username
         const { data: ownerProfile, error: ownerProfileError } = await getUserProfile(userId);
         if (ownerProfileError || !ownerProfile || !ownerProfile.username) {
             throw new Error("Could not fetch owner profile or username.");
@@ -266,13 +266,10 @@ export async function createTracker({
 
         console.log("Creating tracker for user ID:", userId);
 
-        // -----------------------------------------
-        // INSERT INTO TRACKERS TABLE (No change here)
-        // -----------------------------------------
+        // Insert into trackers table
         const { data: trackerData, error: trackerErr } = await supabase
             .from("trackers")
             .insert([
-                // ... (existing insert object)
                 {
                     owner_id: userId,
                     tracker_name: trackerName,
@@ -285,7 +282,8 @@ export async function createTracker({
                     goal_enabled: goalEnabled,
                     goal_amount: goalAmount,
                     min_daily_amount: minDailyAmount,
-                    goal_date: goalDate || null
+                    goal_date: goalDate || null,
+                    streak_days: 0
                 }
             ])
             .select()
@@ -296,9 +294,15 @@ export async function createTracker({
         const trackerId = trackerData.id;
         console.log("Tracker created successfully with ID:", trackerId);
 
-        // -----------------------------------------
-        // MANAGE CONTRIBUTORS (New Logic)
-        // -----------------------------------------
+        // Create initial streak record if enabled
+        if (streakEnabled && streakMinAmount) {
+            const streakResult = await createTrackerStreak(trackerId, streakMinAmount);
+            if (!streakResult.success) {
+                console.warn("Failed to create initial streak:", streakResult.error);
+            }
+        }
+
+        // Manage contributors
         await manageTrackerContributors(
             trackerId,
             userId,
@@ -330,20 +334,19 @@ export async function updateTracker({
     minDailyAmount,
     goalDate,
     contributors,
-    wasStreakEnabled // NEW: Flag to know if streaks were previously enabled
+    wasStreakEnabled
 }) {
     try {
         if (!trackerId) {
             throw new Error("Tracker ID is required for update.");
         }
 
-        // Get current user ID
         const currentUserId = await getCurrentUserId();
         if (!currentUserId) {
             throw new Error("User session expired. Please log in again.");
         }
         
-        // --- 1. OWNER CHECK --------------------------------
+        // Owner check
         const { data: trackerDataCheck, error: checkError } = await supabase
             .from("trackers")
             .select("owner_id")
@@ -358,16 +361,60 @@ export async function updateTracker({
             throw new Error("Permission Denied: Only the owner can edit this tracker.");
         }
 
-        // --- 2. DELETE STREAK DATA IF DISABLING STREAKS ---
+        // Handle streak changes
         if (wasStreakEnabled && !streakEnabled) {
-            console.log("Streaks disabled - deleting streak data...");
-            const deleteResult = await deleteTrackerStreakData(trackerId);
-            if (!deleteResult.success) {
-                throw new Error("Failed to delete streak data: " + deleteResult.error);
+            // Case 1: Disabling streaks (explicit toggle OFF)
+            console.log("Streaks disabled - marking current streak as lost...");
+            const markResult = await markStreakAsLost(trackerId);
+            if (!markResult.success) {
+                console.warn("Failed to mark streak as lost:", markResult.error);
+            }
+        } else if (streakEnabled && wasStreakEnabled && streakMinAmount !== trackerDataCheck.streak_min_amount) {
+            // Case 2: Streak is ON, and minimum amount has changed (reset required)
+            // Note: trackerDataCheck.streak_min_amount is the value before update.
+            console.log("Streak minimum amount changed, marking old streak as lost and creating new one...");
+            await markStreakAsLost(trackerId);
+            await createTrackerStreak(trackerId, streakMinAmount);
+        } else if (!wasStreakEnabled && streakEnabled) {
+            // Case 3: Enabling streaks (explicit toggle ON)
+            console.log("Streaks enabled - creating new streak record...");
+            const createResult = await createTrackerStreak(trackerId, streakMinAmount);
+            if (!createResult.success) {
+                console.warn("Failed to create new streak:", createResult.error);
             }
         }
 
-        // Fetch owner's profile to get their username
+        // Clean up and compare min amount values
+        const currentTrackerMinAmount = parseFloat(trackerDataCheck.streak_min_amount) || null;
+        const newStreakMinAmount = streakEnabled && streakMinAmount ? parseFloat(streakMinAmount) : null;
+        const minAmountChanged = streakEnabled && wasStreakEnabled && (currentTrackerMinAmount !== newStreakMinAmount);
+        
+        let shouldResetTrackerStreakDays = false;
+
+        // Handle streak changes
+        if (wasStreakEnabled && !streakEnabled) {
+            // Disabling streaks - mark current streak as lost
+            console.log("Streaks disabled - marking current streak as lost...");
+            const markResult = await markStreakAsLost(trackerId);
+            if (!markResult.success) {
+                console.warn("Failed to mark streak as lost:", markResult.error);
+            }
+        } else if (minAmountChanged) {
+            // Streak settings changed (minimum amount) - mark old as lost, create new
+            console.log("Streak settings changed (min amount) - marking old as lost and creating new...");
+            await markStreakAsLost(trackerId);
+            await createTrackerStreak(trackerId, newStreakMinAmount);
+            shouldResetTrackerStreakDays = true; // Flag for display reset
+        } else if (!wasStreakEnabled && streakEnabled) {
+            // Enabling streaks - create new streak record
+            console.log("Streaks enabled - creating new streak record...");
+            const createResult = await createTrackerStreak(trackerId, newStreakMinAmount);
+            if (!createResult.success) {
+                console.warn("Failed to create new streak:", createResult.error);
+            }
+            shouldResetTrackerStreakDays = true; // Flag for display reset
+        }
+
         const { data: ownerProfile, error: ownerProfileError } = await getUserProfile(currentUserId);
         if (ownerProfileError || !ownerProfile || !ownerProfile.username) {
             throw new Error("Could not fetch owner profile or username.");
@@ -375,28 +422,36 @@ export async function updateTracker({
 
         console.log("Updating tracker with ID:", trackerId);
 
-        // --- 3. UPDATE TRACKERS TABLE ---
+        // Prepare the update payload
+        const updatePayload = {
+            tracker_name: trackerName,
+            description,
+            bank_name: bankName,
+            interest_rate: interestRate,
+            streak_enabled: streakEnabled,
+            streak_min_amount: streakEnabled ? newStreakMinAmount : null,
+            goal_enabled: goalEnabled,
+            goal_amount: goalAmount,
+            min_daily_amount: minDailyAmount,
+            goal_date: goalDate || null
+        };
+        
+        // Final streak_days reset for display if a new streak was started/reset
+        if (shouldResetTrackerStreakDays) {
+            updatePayload.streak_days = 0;
+        }
+
+        // Update trackers table
         const { data: trackerData, error: trackerErr } = await supabase
             .from("trackers")
-            .update({
-                tracker_name: trackerName,
-                description,
-                bank_name: bankName,
-                interest_rate: interestRate,
-                streak_enabled: streakEnabled,
-                streak_min_amount: streakEnabled ? streakMinAmount : null,
-                goal_enabled: goalEnabled,
-                goal_amount: goalAmount,
-                min_daily_amount: minDailyAmount,
-                goal_date: goalDate || null
-            })
+            .update(updatePayload)
             .eq("id", trackerId)
             .select()
             .single();
 
         if (trackerErr) throw trackerErr;
         
-        // --- 4. MANAGE CONTRIBUTORS ---
+        // Manage contributors
         await manageTrackerContributors(
             trackerId,
             currentUserId,
@@ -698,13 +753,13 @@ export async function checkAndUpdateStreak(trackerId) {
             .eq("date", todayStr)
             .maybeSingle();
 
-        if (logError && logError.code !== 'PGRST116') { // PGRST116 = no rows
+        if (logError && logError.code !== 'PGRST116') {
             console.error("Error checking today's streak log:", logError);
         }
 
         const isTodayActive = todayLog?.is_active || false;
 
-        // Check yesterday's status to determine if streak continues
+        // Check yesterday's status
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayStr = yesterday.toISOString().split('T')[0];
@@ -719,35 +774,33 @@ export async function checkAndUpdateStreak(trackerId) {
 
         let newStreakDays = tracker.streak_days || 0;
 
-        // Streak logic:
-        // - If today is active and yesterday was active: increment
-        // - If today is active and yesterday was not active: reset to 1
-        // - If today is not active and yesterday was active: check if it's past midnight (reset to 0)
-        // - If today is not active and yesterday was not active: keep at 0
-        
+        // CORRECTED STREAK LOGIC:
         if (isTodayActive) {
-            if (yesterdayLog?.is_active) {
-                // Continue streak - only increment if not already incremented today
-                if (tracker.last_streak_check !== todayStr) {
-                    newStreakDays = (tracker.streak_days || 0) + 1;
-                }
+            // Today's streak is active
+            if (tracker.last_streak_check === todayStr) {
+                // Already checked today, keep current count
+                newStreakDays = tracker.streak_days || 1;
             } else {
-                // Start new streak
-                newStreakDays = 1;
+                // First time activating today
+                if (yesterdayLog?.is_active) {
+                    // Yesterday was active - increment streak
+                    newStreakDays = (tracker.streak_days || 0) + 1;
+                } else {
+                    // Yesterday was not active - start new streak
+                    newStreakDays = 1;
+                }
             }
         } else {
             // Today not active yet
-            if (yesterdayLog?.is_active === false || !yesterdayLog) {
-                // Yesterday was also inactive or doesn't exist
+            if (!yesterdayLog || yesterdayLog.is_active === false) {
+                // Yesterday was also inactive - keep at 0
                 newStreakDays = 0;
-            } else if (yesterdayLog?.is_active) {
-                // Yesterday was active but today isn't yet
-                // Check if we've passed midnight (streak at risk)
-                const lastCheck = tracker.last_streak_check;
-                if (lastCheck && lastCheck !== todayStr) {
-                    // It's a new day and streak hasn't been activated - reset
-                    newStreakDays = 0;
-                }
+            } else if (yesterdayLog.is_active && tracker.last_streak_check !== todayStr) {
+                // Yesterday was active but today isn't - streak broken, reset to 0
+                newStreakDays = 0;
+            } else {
+                // Keep current streak (waiting for today's deposit)
+                newStreakDays = tracker.streak_days || 0;
             }
         }
 
@@ -778,6 +831,190 @@ export async function checkAndUpdateStreak(trackerId) {
     }
 }
 
+
+// -----------------------------------------------------------------------------
+// CREATE NEW STREAK FOR TRACKER
+// Called when enabling streaks on a tracker or when starting fresh
+// -----------------------------------------------------------------------------
+export async function createTrackerStreak(trackerId, streakMinAmount) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) {
+            return { success: false, error: "No user logged in" };
+        }
+
+        // Check if an ongoing streak already exists
+        const { data: existing } = await supabase
+            .from("streaks")
+            .select("id")
+            .eq("tracker_id", trackerId)
+            .eq("user_id", userId)
+            .eq("status", "ongoing")
+            .maybeSingle();
+
+        if (existing) {
+            // Update existing streak with new minimum
+            const { error: updateError } = await supabase
+                .from("streaks")
+                .update({ streak_min_amount: streakMinAmount })
+                .eq("id", existing.id);
+
+            if (updateError) {
+                return { success: false, error: updateError.message };
+            }
+
+            return { success: true, streakId: existing.id, isNew: false };
+        }
+
+        // Create new streak record
+        const { data: newStreak, error: insertError } = await supabase
+            .from("streaks")
+            .insert({
+                tracker_id: trackerId,
+                user_id: userId,
+                streak_min_amount: streakMinAmount,
+                status: "ongoing",
+                is_active_today: false,
+                streak_days: 0,
+                highest_streak_days: 0,
+                highest_streak_balance: 0
+            })
+            .select()
+            .single();
+
+        if (insertError) {
+            console.error("Error creating streak:", insertError);
+            return { success: false, error: insertError.message };
+        }
+
+        console.log("New streak created:", newStreak.id);
+        return { success: true, streakId: newStreak.id, isNew: true };
+
+    } catch (err) {
+        console.error("Create streak error:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+// -----------------------------------------------------------------------------
+// MARK STREAK AS LOST
+// Called when disabling streaks or when editing streak settings
+// Updates the status to 'lost' and records the final days achieved
+// -----------------------------------------------------------------------------
+export async function markStreakAsLost(trackerId) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) {
+            return { success: false, error: "No user logged in" };
+        }
+
+        // Find ongoing streak
+        const { data: streak, error: findError } = await supabase
+            .from("streaks")
+            .select("*")
+            .eq("tracker_id", trackerId)
+            .eq("user_id", userId)
+            .eq("status", "ongoing")
+            .maybeSingle();
+
+        if (findError || !streak) {
+            return { success: true, message: "No ongoing streak to mark as lost" };
+        }
+
+        // Update streak status to 'lost'
+        const { error: updateError } = await supabase
+            .from("streaks")
+            .update({
+                status: "lost",
+                updated_at: new Date().toISOString()
+            })
+            .eq("id", streak.id);
+
+        if (updateError) {
+            console.error("Error marking streak as lost:", updateError);
+            return { success: false, error: updateError.message };
+        }
+
+        console.log(`Streak ${streak.id} marked as lost with ${streak.streak_days} days`);
+        return {
+            success: true,
+            streakId: streak.id,
+            daysAchieved: streak.streak_days
+        };
+
+    } catch (err) {
+        console.error("Mark streak as lost error:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+// -----------------------------------------------------------------------------
+// DELETE ALL STREAK DATA FOR TRACKER
+// Called when completely removing streak feature
+// -----------------------------------------------------------------------------
+export async function deleteTrackerStreakData(trackerId) {
+    try {
+        if (!trackerId) {
+            return { success: false, error: "Tracker ID is required" };
+        }
+
+        const userId = await getCurrentUserId();
+        if (!userId) {
+            return { success: false, error: "No user logged in" };
+        }
+
+        // Delete all streak records for this tracker and user
+        const { error: deleteError } = await supabase
+            .from("streaks")
+            .delete()
+            .eq("tracker_id", trackerId)
+            .eq("user_id", userId);
+
+        if (deleteError) {
+            console.error("Error deleting streak data:", deleteError);
+            return { success: false, error: deleteError.message };
+        }
+
+        console.log("All streak data deleted for tracker:", trackerId);
+        return { success: true };
+
+    } catch (err) {
+        console.error("Delete streak data error:", err);
+        return { success: false, error: err.message };
+    }
+}
+
+// -----------------------------------------------------------------------------
+// GET STREAK HISTORY FOR TRACKER
+// Fetches all streaks (ongoing and lost) for display purposes
+// -----------------------------------------------------------------------------
+export async function getStreakHistory(trackerId) {
+    try {
+        const userId = await getCurrentUserId();
+        if (!userId) {
+            return { data: [], error: "No user logged in" };
+        }
+
+        const { data, error } = await supabase
+            .from("streaks")
+            .select("*")
+            .eq("tracker_id", trackerId)
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false });
+
+        if (error) {
+            console.error("Error fetching streak history:", error);
+            return { data: [], error: error.message };
+        }
+
+        return { data: data || [], error: null };
+
+    } catch (err) {
+        console.error("Get streak history error:", err);
+        return { data: [], error: err.message };
+    }
+}
+
 // -----------------------------------------------------------------------------
 // ACTIVATE STREAK (Called after a deposit meets minimum requirement)
 // -----------------------------------------------------------------------------
@@ -803,64 +1040,23 @@ export async function activateStreak(trackerId, depositAmount) {
             return { success: false, error: "Streak not enabled for this tracker" };
         }
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayStr = today.toISOString().split('T')[0];
+        // Call the RPC function that handles streak activation
+        const { data, error } = await supabase.rpc('activate_streak_for_deposit', {
+            p_tracker_id: trackerId,
+            p_user_id: userId,
+            p_deposit_amount: depositAmount
+        });
 
-        // Check if already activated today
-        const { data: existingLog } = await supabase
-            .from("streak_logs")
-            .select("*")
-            .eq("tracker_id", trackerId)
-            .eq("user_id", userId)
-            .eq("date", todayStr)
-            .maybeSingle();
-
-        if (existingLog?.is_active) {
-            return { 
-                success: true, 
-                alreadyActive: true,
-                message: "Streak already activated today" 
-            };
+        if (error) {
+            console.error("Activate streak RPC error:", error);
+            return { success: false, error: error.message };
         }
-
-        // Calculate total deposited today (including this deposit)
-        const totalToday = (existingLog?.amount_deposited || 0) + depositAmount;
-
-        // Check if minimum is met
-        const minAmount = tracker.streak_min_amount || 0;
-        const meetsMinimum = totalToday >= minAmount;
-
-        // Upsert the streak log
-        const { error: logError } = await supabase
-            .from("streak_logs")
-            .upsert({
-                tracker_id: trackerId,
-                user_id: userId,
-                date: todayStr,
-                amount_deposited: totalToday,
-                is_active: meetsMinimum,
-                activated_at: meetsMinimum ? new Date().toISOString() : null
-            }, {
-                onConflict: 'tracker_id,user_id,date'
-            });
-
-        if (logError) {
-            console.error("Error updating streak log:", logError);
-            return { success: false, error: logError.message };
-        }
-
-        // Now update the tracker's streak count
-        await checkAndUpdateStreak(trackerId);
 
         return {
             success: true,
-            streakActivated: meetsMinimum,
-            totalToday: totalToday,
-            minimumRequired: minAmount,
-            message: meetsMinimum 
-                ? "Streak activated for today!" 
-                : `Deposited $${totalToday.toFixed(2)} of $${minAmount.toFixed(2)} required`
+            streakActivated: data?.streak_activated || false,
+            newStreakDays: data?.new_streak_days || 0,
+            message: data?.message || "Streak processed"
         };
 
     } catch (err) {
@@ -871,6 +1067,7 @@ export async function activateStreak(trackerId, depositAmount) {
 
 // -----------------------------------------------------------------------------
 // GET TODAY'S STREAK STATUS
+//
 // -----------------------------------------------------------------------------
 export async function getTodayStreakStatus(trackerId) {
     try {
@@ -879,27 +1076,49 @@ export async function getTodayStreakStatus(trackerId) {
             return { success: false, error: "No user logged in" };
         }
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayStr = today.toISOString().split('T')[0];
+        // 1. Get the tracker to find the owner_id
+        const { data: tracker, error: trackerError } = await supabase
+            .from("trackers")
+            .select("owner_id")
+            .eq("id", trackerId)
+            .single();
 
-        const { data, error } = await supabase
-            .from("streak_logs")
+        if (trackerError || !tracker) {
+            return { success: false, error: trackerError?.message || "Tracker not found" };
+        }
+        
+        const ownerId = tracker.owner_id;
+
+        // 2. Get the active/ongoing streak for this tracker, specifically using the OWNER'S ID
+        const { data: streak, error: streakQueryError } = await supabase
+            .from("streaks")
             .select("*")
             .eq("tracker_id", trackerId)
-            .eq("user_id", userId)
-            .eq("date", todayStr)
+            .eq("user_id", ownerId) // <--- KEY CHANGE: Check the owner's record for shared status
+            .eq("status", "ongoing")
             .maybeSingle();
 
-        if (error && error.code !== 'PGRST116') {
-            return { success: false, error: error.message };
+        if (streakQueryError && streakQueryError.code !== 'PGRST116') {
+            console.error("Error fetching streak:", streakQueryError);
+            return { success: false, error: streakQueryError.message };
+        }
+
+        // If no ongoing streak exists for the owner (master record), return inactive
+        if (!streak) {
+            return {
+                success: true,
+                isActive: false,
+                streakDays: 0,
+                message: "No active streak"
+            };
         }
 
         return {
             success: true,
-            isActive: data?.is_active || false,
-            amountDeposited: data?.amount_deposited || 0,
-            activatedAt: data?.activated_at
+            isActive: streak.is_active_today || false,
+            streakDays: streak.streak_days || 0,
+            highestStreak: streak.highest_streak_days || 0,
+            streakId: streak.id
         };
 
     } catch (err) {
@@ -909,47 +1128,91 @@ export async function getTodayStreakStatus(trackerId) {
 }
 
 // -----------------------------------------------------------------------------
-// DELETE STREAK DATA FOR A TRACKER
-// Called when disabling streaks on a tracker
+// SIMULATE NEXT DAY (DEVELOPMENT ONLY)
+// Advances all streak_logs dates by 1 day for testing purposes
+// This helps test streak logic without waiting for real days to pass
 // -----------------------------------------------------------------------------
-export async function deleteTrackerStreakData(trackerId) {
+export async function simulateNextDay() {
     try {
-        if (!trackerId) {
-            return { success: false, error: "Tracker ID is required" };
+        const userId = await getCurrentUserId();
+        if (!userId) {
+            return { success: false, error: "No user logged in" };
         }
 
-        // Delete all streak logs for this tracker
-        const { error: logsError } = await supabase
-            .from("streak_logs")
-            .delete()
-            .eq("tracker_id", trackerId);
+        // Call the RPC function that handles the day simulation
+        const { data, error } = await supabase.rpc('simulate_next_day', {
+            p_user_id: userId
+        });
 
-        if (logsError) {
-            console.error("Error deleting streak logs:", logsError);
-            return { success: false, error: logsError.message };
+        if (error) {
+            console.error("Simulate next day error:", error);
+            return { success: false, error: error.message };
         }
 
-        // Reset streak-related fields in the tracker
-        const { error: trackerError } = await supabase
-            .from("trackers")
-            .update({
-                streak_days: 0,
-                last_streak_check: null
-            })
-            .eq("id", trackerId);
-
-        if (trackerError) {
-            console.error("Error resetting tracker streak fields:", trackerError);
-            return { success: false, error: trackerError.message };
-        }
-
-        console.log("Streak data deleted successfully for tracker:", trackerId);
-        return { success: true };
+        console.log("Day simulation successful:", data);
+        return { 
+            success: true, 
+            newDate: data,
+            message: "Advanced to next day successfully"
+        };
 
     } catch (err) {
-        console.error("Delete streak data error:", err);
+        console.error("Simulate next day error:", err);
         return { success: false, error: err.message };
     }
 }
 
+// -----------------------------------------------------------------------------
+// FETCH ALL USER AGGREGATED STATISTICS (RPC)
+// -----------------------------------------------------------------------------
+export async function getUserSavingsStatistics(userId = null) {
+    let targetUserId = userId;
+    
+    // If no userId provided, fetch current user's ID
+    if (!targetUserId) {
+        targetUserId = await getCurrentUserId();
+    }
+    
+    if (!targetUserId) {
+        return { data: null, error: { message: "No user ID available" } };
+    }
 
+    try {
+        const { data, error } = await supabase.rpc('get_user_savings_statistics', {
+            p_user_id: targetUserId
+        });
+
+        if (error) {
+            console.error("RPC get_user_savings_statistics error:", error.message);
+            return { data: null, error: error.message };
+        }
+
+        return { data: data || null, error: null };
+
+    } catch (err) {
+        console.error("Get user statistics error:", err.message);
+        return { data: null, error: err.message };
+    }
+}
+
+// -----------------------------------------------------------------------------
+// HELPER: Format streak days with correct singular/plural 'day/days'
+// -----------------------------------------------------------------------------
+export function formatStreakDays(days) {
+    const count = parseInt(days) || 0;
+    const unit = count === 1 ? 'day' : 'days';
+    return `${count} ${unit}`;
+}
+
+// Helper function to convert streak days to a badge name
+export function getStreakBadge(days) {
+    if (days >= 500) return { name: "Mythical", emoji: "✨" };
+    if (days >= 250) return { name: "Diamond", emoji: "💎" };
+    if (days >= 200) return { name: "Ruby", emoji: "🔴" };
+    if (days >= 150) return { name: "Gold", emoji: "🛡️" };
+    if (days >= 100) return { name: "Platinum", emoji: "🥇" };
+    if (days >= 50) return { name: "Silver", emoji: "🥈" };
+    if (days >= 10) return { name: "Bronze", emoji: "🥉" };
+    if (days >= 3) return { name: "Wood", emoji: "🪵" };
+    return { name: "casual saver", emoji: "" };
+}

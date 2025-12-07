@@ -33,6 +33,7 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
 
     // NEW: Track original streak state to detect when it's being disabled
     const [wasStreakEnabled, setWasStreakEnabled] = useState(false);
+    const [originalStreakMinAmount, setOriginalStreakMinAmount] = useState("");
 
     // NEW: Warning message state
     const [streakWarning, setStreakWarning] = useState("");
@@ -81,7 +82,9 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
             const originalStreakState = tracker.streak_enabled || false;
             setStreakEnabled(originalStreakState);
             setWasStreakEnabled(originalStreakState);
-            setStreakMinAmount(tracker.streak_min_amount?.toString() || "");
+            const originalMin = tracker.streak_min_amount?.toString() || "";
+            setOriginalStreakMinAmount(originalMin); 
+            setStreakMinAmount(originalMin);
 
             // Preload goal values
             setGoalEnabled(tracker.goal_enabled || false);
@@ -124,17 +127,30 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
     // 2. Handle Streak Toggle with Warning
     // -------------------------------------------------------------------------
     const handleStreakToggle = (newValue) => {
-        // If turning OFF streaks and they were previously ON, show warning
-        if (wasStreakEnabled && !newValue) {
-            setStreakWarning("⚠️ Warning: Disabling streaks will permanently delete all streak history and progress for this tracker.");
-        } else {
-            setStreakWarning("");
-        }
         setStreakEnabled(newValue);
     };
 
     // -------------------------------------------------------------------------
-    // 3. Goal Calculation Logic
+    // 3. Manage Streak Warning Message (For Disabling OR Changing Min Amount)
+    // -------------------------------------------------------------------------
+    useEffect(() => {
+        const currentMin = parseFloat(streakMinAmount) || 0;
+        const originalMin = parseFloat(originalStreakMinAmount) || 0;
+
+        if (wasStreakEnabled && !streakEnabled) {
+            // Case 1: Disabling streak
+            setStreakWarning("⚠️ Warning: Disabling streaks will mark your current streak as 'lost' and start a new streak upon re-enabling.");
+        } else if (wasStreakEnabled && streakEnabled && currentMin !== originalMin) {
+            // Case 2: Minimum Amount changed while streak is enabled
+            setStreakWarning("⚠️ Warning: Changing the Minimum Streak Amount will mark your current streak as 'lost' and start a new streak from 0 days.");
+        } else {
+            setStreakWarning("");
+        }
+
+    }, [streakEnabled, streakMinAmount, originalStreakMinAmount, wasStreakEnabled]);
+
+    // -------------------------------------------------------------------------
+    // 4. Goal Calculation Logic
     // -------------------------------------------------------------------------
     useEffect(() => {
         if (!goalEnabled) {
@@ -267,6 +283,13 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
         setSubmitError("");
 
         try {
+            const currentMin = streakMinAmount ? parseFloat(streakMinAmount) : null;
+            const originalMin = originalStreakMinAmount ? parseFloat(originalStreakMinAmount) : null;
+            
+            const hasMinAmountChanged = originalMin !== currentMin;
+            
+            const forceReset = wasStreakEnabled && streakEnabled && hasMinAmountChanged;
+
             const trackerData = {
                 trackerId: tracker.id,
                 trackerName: trackerName.trim(),
@@ -280,8 +303,12 @@ function EditTrackerForm({ show, onClose, tracker, onSuccess }) {
                 minDailyAmount: goalEnabled && minAmount ? parseFloat(minAmount) : null,
                 goalDate: goalEnabled && goalDate ? goalDate : null,
                 contributors: contributionEnabled ? contributors.filter(c => c.trim() !== "") : [],
-                wasStreakEnabled // Pass original state to backend
+                wasStreakEnabled: wasStreakEnabled || forceReset 
             };
+            
+            if (forceReset) {
+                console.log("Streak minimum amount changed, forcing streak reset on backend.");
+            }
 
             const response = await updateTracker(trackerData);
 

@@ -256,7 +256,6 @@ function CreateTrackerForm({ show, onClose, onSuccess }) {
                 resetForm();
                 onClose();
 
-                // Notify parent so it can refresh tracker list
                 if (onSuccess) {
                     onSuccess({ action: "create", trackerId: response.trackerId });
                 }

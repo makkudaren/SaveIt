@@ -23,7 +23,7 @@ function Tracker({ tracker, onTrackerChange, isTodayStreakActive  }) {
     // --- RENDER NULL STATE ---
     if (!tracker) {
         return (
-            <div className="//TRACKER-FULL flex bg-[var(--green0)] p-5 gap-3 w-full h-60 rounded-4xl shadow-lg justify-center items-center">
+            <div className="//TRACKER-FULL flex bg-[var(--green0)] p-5 gap-3 w-full h-77 rounded-4xl shadow-lg justify-center items-center">
                 <h4 className="text-[var(--neutral3)]">Select a tracker below to view its full details.</h4>
             </div>
         );
@@ -418,7 +418,7 @@ function Tracker({ tracker, onTrackerChange, isTodayStreakActive  }) {
                             <h5
                                 className={isTodayStreakActive ? "text-[var(--green3)]" : "text-[var(--neutral3)]"}
                             >
-                                {streak} days
+                                {streak} {streak === 1 ? 'day' : 'days'}
                             </h5>
                         </div>
                         

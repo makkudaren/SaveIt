@@ -56,7 +56,7 @@ function MainLayout() {
 
 
   return (
-    <div className="flex min-w-screen min-h-screen ">
+    <div className="flex min-w-screen min-h-screen overflow-x-hidden">
 
         {/* LEFT SIDEBAR (Navigation Menu) 
             NEW: It's now fixed and manages its position based on the flex container
@@ -70,14 +70,14 @@ function MainLayout() {
             NEW: The entire content area now has a left margin that shifts smoothly
             to match the width of the NavigationBar, making the <Outlet /> fill 
             the *remaining* space seamlessly. */}
-        <div className={`flex flex-col w-full min-h-screen transition-all duration-300 ease-out ${contentAreaClass}`}>
+        <div className={`flex flex-col w-full min-h-[screen] overflow-hidden transition-all duration-300 ease-out ${contentAreaClass} `}>
 
             {/* HEADER (User info, page title, notifications, etc.) */}
             <Header />
 
             {/* OUTLET → Loads child pages dynamically */}
             
-              <Outlet />
+            <Outlet />
             
             
         </div>

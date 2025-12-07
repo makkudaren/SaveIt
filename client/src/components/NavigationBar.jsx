@@ -155,7 +155,7 @@ function NavigationBar({ isCollapsed, setIsCollapsed }) {
 
 
         {/* NAVIGATION BUTTON GROUP */}
-        <div className="flex flex-col items-center gap-3 w-full">
+        <div className={`flex flex-col items-center gap-3 w-full transition-all duration-1000 ${isCollapsed ? '' : ''}`}>
           <Button to="/dashboard" Icon={HomeIcon}>Dashboard</Button>
           <Button to="/trackers" Icon={TrackerIcon}>Trackers</Button>
           <Button to="/statistics" Icon={StatisticsIcon}>Statistics</Button>
