@@ -370,8 +370,8 @@ function TrackersPage() {
             />
 
             {/* MAIN PAGE ---------------------------------------------------------- */}
-            <div className="flex justify-center p-5 h-full">
-                <div className="flex flex-col w-full max-w-[95em] max-h-[55em] gap-5">
+            <div className="flex justify-center p-5 h-full flex justify-center p-5 h-[90%] overflow-x-hidden">
+                <div className="flex flex-col w-full max-w-[95em] max-h-[50em] gap-5 ">
 
                     {/* LARGE TRACKER DETAIL PANEL */}
                     {loading ?

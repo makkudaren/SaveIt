@@ -73,7 +73,7 @@ function SkeletonStatisticsPage() {
     return (
         <div className="flex justify-center p-5 h-full animate-pulse overflow-x-hidden">
             {/* Increased max-h slightly */}
-            <div className="flex flex-col w-full max-w-[95em] max-h-[52em] gap-5 ">
+            <div className="flex flex-col w-full max-w-[95em] max-h-[50em] gap-5 ">
                 
                 {/* STREAK TIER GUIDE SKELETON */}
                 <div className="bg-[var(--green0)] rounded-4xl shadow-xl p-5 mt-5">
@@ -237,7 +237,7 @@ function StatisticsPage(){
     return (
         <>
             <div className="flex justify-center p-5 h-full flex justify-center p-5 h-full overflow-x-hidden">
-                <div className="flex flex-col w-full max-w-[95em] max-h-[52em] gap-5 ">
+                <div className="flex flex-col w-full max-w-[95em] max-h-[50em] gap-5 ">
                     {/* STREAK TIER GUIDE */}
                     <div className="bg-[var(--green0)] rounded-4xl shadow-xl p-5 mt-5">
                         <h2 className="mb-4 text-[var(--green3)]">🌟 Streak Tier Guide</h2>

@@ -168,15 +168,15 @@ function SkeletonDetailSection() {
 function SkeletonDashboardPage() {
     return (
         <div className="flex justify-center p-5 h-full ">
-            <div className="flex flex-col w-full max-w-[95em] max-h-[52em]">
+            <div className="flex flex-col w-full max-w-[95em] max-h-[50em]">
 
                 {/* USER GREETING SKELETON (h1) */}
-                <div className="h-15 w-64 bg-[var(--neutral1)] rounded-lg mb-4 animate-pulse"></div>
+                <div className="min-h-10 w-64 bg-[var(--neutral1)] rounded-lg mb-4 animate-pulse"></div>
 
-                <div className="flex flex-row h-full gap-5">
+                <div className="flex flex-row h-[95%] gap-5">
 
                     {/* LEFT PANEL – STREAK OVERVIEW SKELETON (min-w-120) */}
-                    <div className="flex flex-col items-center min-w-120 shadow-lg bg-[var(--green0)] rounded-4xl p-5 gap-2 animate-pulse">
+                    <div className="flex flex-col items-center min-w-120 h-full shadow-lg bg-[var(--green0)] rounded-4xl p-5 gap-2 animate-pulse">
 
                         {/* MAIN STREAK BADGE GRAPHIC SKELETON */}
                         <div className="flex bg-[var(--green0)] justify-center relative z-0 mx-1 w-50 h-50">
@@ -553,8 +553,8 @@ function DashboardPage() {
     // -------------------------------------------------------------------------
     return (
         <>
-            <div className="flex justify-center p-5 h-full ">
-                <div className="flex flex-col w-full max-w-[95em] max-h-[55em]">
+            <div className="flex justify-center p-5 pt-2 h-full ">
+                <div className="flex flex-col w-full max-w-[95em] max-h-[50em]">
 
                     {/* USER GREETING -------------------------------------------------- */}
                     <h1>Hello, {profile?.username}</h1>

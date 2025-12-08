@@ -124,7 +124,7 @@ function NavigationBar({ isCollapsed, setIsCollapsed }) {
          Uses 'fixed' and the width classes from the second component, but keeps 
          the animation from the first.
          --------------------------------------------------------------------- */}
-      <div className={`hidden fixed top-0 left-0 z-20 xl:flex min-h-screen flex-col items-center justify-between bg-[var(--green1)] p-3 border-[var(--neutral1)] border-2 transition-all duration-300 ease-in-out ${
+      <div className={`fixed top-0 left-0 z-20 xl:flex min-h-screen flex-col items-center justify-between bg-[var(--green1)] p-3 border-[var(--neutral1)] border-2 transition-all duration-300 ease-in-out ${
         isCollapsed ? 'w-24' : 'w-72' // Using w-24 and w-72 from second version
       }`}>
 
